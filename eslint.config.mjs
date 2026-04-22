@@ -13,6 +13,7 @@ export default [
       '.turbo/',
       'coverage/',
       '**/*.config.js',
+      '**/*.config.mjs',
       '**/*.config.ts',
       '.husky/**',
       'pnpm-lock.yaml',

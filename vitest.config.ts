@@ -4,6 +4,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
+    passWithNoTests: true,
     coverage: {
       reporter: ['text', 'json', 'html', 'lcov'],
       exclude: [
