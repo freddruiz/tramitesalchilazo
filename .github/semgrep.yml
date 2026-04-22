@@ -1,0 +1,67 @@
+rules:
+  - id: no-md5
+    patterns:
+      - pattern: crypto.createHash("md5")
+      - pattern: crypto.createHash('md5')
+    message: MD5 is cryptographically broken. Use SHA-256 or stronger.
+    languages: [javascript, typescript]
+    severity: ERROR
+
+  - id: no-sha1
+    patterns:
+      - pattern: crypto.createHash("sha1")
+      - pattern: crypto.createHash('sha1')
+    message: SHA-1 is cryptographically broken. Use SHA-256 or stronger.
+    languages: [javascript, typescript]
+    severity: ERROR
+
+  - id: no-bcrypt
+    patterns:
+      - pattern: import bcrypt from '$PKG'
+      - pattern: require('$PKG')
+      - pattern: require("$PKG")
+    pattern-where-python: "'bcrypt' in vars['$PKG'] or 'bcryptjs' in vars['$PKG']"
+    message: >
+      Bcrypt is forbidden. Use Argon2id (argon2 package) with memoryCost=65536,
+      timeCost=3, parallelism=4.
+    languages: [javascript, typescript]
+    severity: ERROR
+
+  - id: no-pbkdf2
+    patterns:
+      - pattern: crypto.pbkdf2(...)
+      - pattern: crypto.pbkdf2Sync(...)
+    message: PBKDF2 is forbidden. Use Argon2id for password hashing.
+    languages: [javascript, typescript]
+    severity: ERROR
+
+  - id: no-aes-ecb
+    patterns:
+      - pattern: crypto.createCipheriv("aes-256-ecb", ...)
+      - pattern: crypto.createCipheriv('aes-256-ecb', ...)
+      - pattern: crypto.createDecipheriv("aes-256-ecb", ...)
+      - pattern: crypto.createDecipheriv('aes-256-ecb', ...)
+    message: >
+      AES-ECB mode is forbidden — it leaks patterns. Use AES-256-GCM.
+    languages: [javascript, typescript]
+    severity: ERROR
+
+  - id: no-hardcoded-iv
+    patterns:
+      - pattern: |
+          const $IV = Buffer.from("...", "hex");
+          ...
+          createCipheriv(..., $IV)
+      - pattern: |
+          const $IV = Buffer.from('...', 'hex');
+          ...
+          createCipheriv(..., $IV)
+      - pattern: |
+          const $IV = Buffer.alloc($N);
+          ...
+          createCipheriv(..., $IV)
+    message: >
+      Static or zeroed IV detected. IV must be crypto.randomBytes(12) per
+      encryption call — never reused or hardcoded.
+    languages: [javascript, typescript]
+    severity: ERROR

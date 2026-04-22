@@ -22,18 +22,18 @@
 **Sprint Goal:** Secure repo scaffold, CI/CD gates, crypto primitives, audit log.
 
 ## Active User Story
-**ID:** S1-02
-**Title:** Crypto utilities (AES-GCM envelope, Argon2id, HMAC)
-**Assigned Model:** Claude Sonnet 4.6
+**ID:** S1-05
+**Title:** Supabase project bootstrap + migrations baseline
+**Assigned Model:** Sonnet 4.6
 **Status:** NOT_STARTED
-**Branch:** `feature/S1-02-crypto-utils` (to be cut from `dev`)
-**Blockers:** none (depends on S1-01 scaffold)
+**Branch:** `feature/S1-05-supabase-bootstrap` (to be cut from `dev`)
+**Blockers:** none (all crypto + schema + error utilities ready)
 
 ### Contextual Continuity
-1. Read this file. Confirm Active Story = S1-01.
-2. Branch from `dev`: `git checkout -b feature/S1-01-repo-scaffold`
-3. Work only within repo root + `/apps/portal`, `/apps/worker` stubs, `/packages/shared` stubs, `/.github/`.
-4. On completion: PR to `dev` with AC + Security Constraint checklists ticked. Update this file (move S1-01 to Completed, promote S1-02 to Active).
+1. Read this file. Confirm Active Story = S1-05.
+2. Branch from `dev`: `git checkout -b feature/S1-05-supabase-bootstrap`
+3. Work only within `supabase/` and related config files.
+4. On completion: PR to `dev` with migration dry-run output. Update this file (move S1-05 to Completed, promote S2-01 to Active).
 
 ---
 
@@ -46,9 +46,9 @@
 
 ### Epic E1 — Foundation & Security Core
 - [x] S1-01  Initialize Secure Repository & CI/CD                          [Haiku 4.5]
-- [ ] S1-02  Crypto utilities (AES-GCM envelope, Argon2id, HMAC)           [Sonnet 4.6]
+- [x] S1-02  Crypto utilities (AES-GCM envelope, Argon2id, HMAC)           [Sonnet 4.6]
 - [ ] S1-03  Append-only audit log with hash chain                         [Sonnet 4.6]
-- [ ] S1-04  Zod schema conventions + error taxonomy                       [Haiku 4.5]
+- [x] S1-04  Zod schema conventions + error taxonomy                       [Haiku 4.5]
 - [ ] S1-05  Supabase project bootstrap + migrations baseline              [Sonnet 4.6]
 
 ### Epic E2 — Identity & Consent
@@ -113,6 +113,63 @@
 ---
 
 ## Completed
+
+### S1-04 — Zod schema conventions + error taxonomy
+**Status:** COMPLETED (2026-04-22)
+**Branch:** `feature/S1-04-zod-errors`
+**Summary:**
+- `packages/shared/src/contracts/schemas/base.ts`: paginationSchema (page min 1, limit 1-100), uuidSchema, guatemalaDpiSchema (13-digit CUI with checksum validation), emailSchema (trim + lowercase), passwordSchema (12+ chars with uppercase, lowercase, digit, special char). All schemas use .strict() mode.
+- `packages/shared/src/errors/codes.ts`: ErrorCode const enum with 18 codes (AUTH_INVALID_CREDENTIALS, AUTH_TOKEN_EXPIRED, AUTH_INSUFFICIENT_PERMISSIONS, AUTH_STEP_UP_REQUIRED, PROFILE_INCOMPLETE, PROFILE_DPI_DUPLICATE, PROFILE_CONSENT_REQUIRED, REQUEST_NOT_FOUND, REQUEST_INVALID_TRANSITION, PAYMENT_AMOUNT_MISMATCH, PAYMENT_GATEWAY_ERROR, PAYMENT_DUPLICATE, DOCUMENT_NOT_FOUND, DOCUMENT_EXPIRED, DOCUMENT_ACCESS_DENIED, ADMIN_UNAUTHORIZED, VALIDATION_FAILED, INTERNAL_ERROR)
+- `packages/shared/src/errors/AppError.ts`: Custom error class extending Error with code (ErrorCode), statusCode (number), isOperational (boolean, default true)
+- `packages/shared/src/errors/handler.ts`: formatApiError(err) function returning {code, message, statusCode}; operational errors expose message, non-operational return generic "unexpected error" message and log real error server-side only
+- `packages/shared/contracts/index.ts` + `packages/shared/errors/index.ts`: barrel exports
+- 30 unit tests: 20 schema tests (pagination, UUID, DPI checksum, email normalization, password rules, .strict() mode) + 10 error handler tests (operational vs non-operational, stack trace hiding, null handling). All passing.
+
+**AC Checklist:**
+- [x] `base.ts` — paginationSchema, uuidSchema, guatemalaDpiSchema, emailSchema, passwordSchema, all .strict()
+- [x] `codes.ts` — ErrorCode const enum with all 18 codes
+- [x] `AppError.ts` — custom error class with code, statusCode, isOperational
+- [x] `handler.ts` — formatApiError with operational vs non-operational handling
+- [x] `contracts/index.ts` + `errors/index.ts` — barrel exports
+- [x] All 30 unit tests passing (schema + handler)
+
+**Security Constraints:**
+- [x] formatApiError never exposes stack traces or internal messages for non-operational errors
+- [x] Never exposes raw DB/SQL error messages in any API response
+- [x] Guatemala DPI validation uses correct checksum algorithm (weights 2,3,4,5,6,7,8,9)
+- [x] Password schema enforces all four character classes (uppercase, lowercase, digit, special)
+
+---
+
+### S1-02 — Crypto utilities (AES-GCM envelope, Argon2id, HMAC)
+**Status:** COMPLETED (2026-04-22)
+**Branch:** `feature/S1-02-crypto-utils-clean`
+**Summary:**
+- `packages/shared/src/crypto/envelope.ts`: AES-256-GCM encrypt/decrypt; IV = `randomBytes(12)` per call; all outputs base64url
+- `packages/shared/src/crypto/kms.ts`: `generateDek` (`randomBytes(32)`), `wrapDek`/`unwrapDek` via `SUPABASE_VAULT_SECRET` env var only
+- `packages/shared/src/crypto/hash.ts`: `hashPassword`/`verifyPassword` Argon2id with memoryCost=65536, timeCost=3, parallelism=4; double-hash guard
+- `packages/shared/src/crypto/hmac.ts`: `deterministicHmac` HMAC-SHA256 hex for DPI lookup columns
+- `packages/shared/src/crypto/index.ts`: barrel export
+- `.github/semgrep.yml`: custom rules blocking MD5, SHA1, bcrypt, PBKDF2, AES-ECB, static/zeroed IVs
+- 14 unit tests: all passing (round-trip, IV randomness, salt randomness, verify correct/wrong, determinism, double-hash guard, auth-tag tamper detection)
+
+**AC Checklist:**
+- [x] `envelope.ts` — encrypt/decrypt AES-256-GCM, IV randomBytes(12), base64url output
+- [x] `kms.ts` — generateDek, wrapDek, unwrapDek via env var only
+- [x] `hash.ts` — argon2id mandatory params, double-hashing guard
+- [x] `hmac.ts` — HMAC-SHA256 hex deterministic
+- [x] `crypto/index.ts` — barrel export
+- [x] `.github/semgrep.yml` — rules blocking forbidden algorithms
+- [x] All 14 unit tests passing
+
+**Security Constraints:**
+- [x] Argon2id params: memoryCost=65536, timeCost=3, parallelism=4
+- [x] IV: randomBytes(12) per call — never static
+- [x] DEK: randomBytes(32) — never derived from password
+- [x] No plaintext keys in source — all from process.env
+- [x] Forbidden algorithms blocked by semgrep rule
+
+---
 
 ### S1-01 — Initialize Secure Repository & CI/CD
 **Status:** COMPLETED (2026-04-22)
