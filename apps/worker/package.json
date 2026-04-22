@@ -1,0 +1,18 @@
+{
+  "name": "@tramitesalchilazo/worker",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "20.14.0",
+    "typescript": "5.6.2",
+    "tsx": "4.19.0"
+  }
+}

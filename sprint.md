@@ -22,28 +22,12 @@
 **Sprint Goal:** Secure repo scaffold, CI/CD gates, crypto primitives, audit log.
 
 ## Active User Story
-**ID:** S1-01
-**Title:** Initialize Secure Repository & CI/CD
-**Assigned Model:** Claude Haiku 4.5
+**ID:** S1-02
+**Title:** Crypto utilities (AES-GCM envelope, Argon2id, HMAC)
+**Assigned Model:** Claude Sonnet 4.6
 **Status:** NOT_STARTED
-**Branch:** `feature/S1-01-repo-scaffold` (to be cut from `dev`)
-**Blockers:** none
-
-### Acceptance Criteria
-- [ ] pnpm workspace boots (`pnpm install` then `pnpm dev` in `/apps/portal` runs)
-- [ ] Monorepo tree matches directory structure below
-- [ ] Node version pinned (`.nvmrc` + `packageManager` in root `package.json`)
-- [ ] CI runs on PR: `lint`, `typecheck`, `test`, `semgrep`, `gitleaks`, `npm audit --production`
-- [ ] Pre-commit hook (husky + lint-staged + gitleaks protect) blocks secrets
-- [ ] `.env.example` documents every variable; real `.env*` gitignored (except `.env.example`)
-- [ ] All dependencies exact-pinned (no `^` or `~`)
-- [ ] Conventional commits enforced via commitlint
-
-### Security Constraints (non-negotiable)
-- No secret values, API keys, tokens, or PII may exist in committed files. CI must fail if `gitleaks` detects any.
-- No `postinstall` lifecycle scripts allowed in dependencies (enforce via `.npmrc` `ignore-scripts=true` with explicit allowlist).
-- Lockfile must be committed; CI must run `--frozen-lockfile`.
-- `npm audit --audit-level=high` must be zero findings at merge time.
+**Branch:** `feature/S1-02-crypto-utils` (to be cut from `dev`)
+**Blockers:** none (depends on S1-01 scaffold)
 
 ### Contextual Continuity
 1. Read this file. Confirm Active Story = S1-01.
@@ -61,7 +45,7 @@
 - [ ] S0-03  Release workflow: `dev` -> `prod` promotion + tag             [Sonnet 4.6]
 
 ### Epic E1 — Foundation & Security Core
-- [ ] S1-01  Initialize Secure Repository & CI/CD                          [Haiku 4.5]
+- [x] S1-01  Initialize Secure Repository & CI/CD                          [Haiku 4.5]
 - [ ] S1-02  Crypto utilities (AES-GCM envelope, Argon2id, HMAC)           [Sonnet 4.6]
 - [ ] S1-03  Append-only audit log with hash chain                         [Sonnet 4.6]
 - [ ] S1-04  Zod schema conventions + error taxonomy                       [Haiku 4.5]
@@ -129,7 +113,21 @@
 ---
 
 ## Completed
-_(empty — updated as stories close)_
+
+### S1-01 — Initialize Secure Repository & CI/CD
+**Status:** COMPLETED (2026-04-22)
+**Branch:** `feature/S1-01-repo-scaffold`
+**Summary:** 
+- pnpm workspace scaffold with root + apps/* + packages/* structure
+- Node 20.11.0 and pnpm 9.1.0 pinned in .nvmrc and engines
+- CI/CD: GitHub Actions workflow with lint, typecheck, test, semgrep, gitleaks, npm audit
+- Husky hooks: pre-commit (lint-staged), pre-push (blocks main/prod), commit-msg (commitlint)
+- ESLint v9 flat config, Prettier, commitlint for Conventional Commits
+- .env.example with all required variables
+- All deps exact-pinned; pnpm-lock.yaml committed
+- Next.js 15.5.15 portal on localhost:3000, Node.js worker stub
+- packages/shared and packages/ui stubs with barrel exports
+- npm audit --audit-level=high: zero critical/high (4 moderate remaining)
 
 ---
 

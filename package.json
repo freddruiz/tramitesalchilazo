@@ -1,0 +1,38 @@
+{
+  "name": "tramitesalchilazo",
+  "version": "0.0.1",
+  "description": "Automated legal document procurement platform for Guatemala",
+  "private": true,
+  "packageManager": "pnpm@9.1.0",
+  "engines": {
+    "node": "20.11.0",
+    "pnpm": "9.1.0"
+  },
+  "scripts": {
+    "dev": "pnpm -r --parallel run dev",
+    "build": "pnpm -r run build",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "audit": "npm audit --audit-level=high --production",
+    "prepare": "husky install"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "20.5.0",
+    "@commitlint/config-conventional": "20.5.0",
+    "@eslint/js": "9.9.1",
+    "@types/node": "20.14.0",
+    "@typescript-eslint/eslint-plugin": "7.17.0",
+    "@typescript-eslint/parser": "7.17.0",
+    "eslint": "9.9.1",
+    "eslint-config-prettier": "9.1.0",
+    "eslint-plugin-react": "7.34.0",
+    "husky": "9.1.4",
+    "lint-staged": "15.2.7",
+    "prettier": "3.3.3",
+    "typescript": "5.6.2",
+    "typescript-eslint": "7.17.0",
+    "vitest": "2.1.9"
+  }
+}
