@@ -1,0 +1,20 @@
+# CODEOWNERS — security-sensitive paths require explicit review.
+# Update handles once collaborators are added to the repo.
+
+# Default owner
+*                                   @freddruiz
+
+# Security-critical modules (require security reviewer)
+/packages/shared/crypto/            @freddruiz
+/packages/shared/audit/             @freddruiz
+/packages/shared/payments/          @freddruiz
+/apps/portal/app/api/auth/          @freddruiz
+/apps/portal/app/api/admin/         @freddruiz
+/apps/worker/                       @freddruiz
+/supabase/migrations/               @freddruiz
+
+# Infra & CI
+/.github/                           @freddruiz
+/infra/                             @freddruiz
+/SECURITY.md                        @freddruiz
+/sprint.md                          @freddruiz

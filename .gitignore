@@ -1,0 +1,57 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+.next/
+dist/
+build/
+out/
+*.tsbuildinfo
+
+# Env files (NEVER commit — only .env.example is tracked)
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json.example
+.idea/
+*.swp
+*.swo
+
+# Test / coverage
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
+
+# Secrets & keys (defense in depth; gitleaks also blocks)
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+.secrets
+
+# Supabase local
+supabase/.branches/
+supabase/.temp/
+
+# Misc
+.turbo/
+.vercel/
+.cache/
