@@ -13,6 +13,7 @@
 - **Auth:** Google OAuth → mandatory profile completion (DPI + secondary password + legal consent) → step-up for sensitive actions. Admin: WebAuthn primary + TOTP fallback, IP allowlist.
 - **Encryption:** AES-256-GCM envelope (per-user DEK, KMS master key) for PII & external credentials. Argon2id for all portal passwords. HMAC-SHA256 for deterministic lookups on encrypted columns.
 - **Retention:** Completed documents available 20 days; email dispatch on completion; automated hard-delete cron.
+- **Public Repo Strategy:** Repository is public. PII handling code, gov-portal automation scripts, and any secrets are NEVER committed. Sensitive automation lives local-only or in a separate private repo linked via submodule.
 
 ---
 
@@ -169,6 +170,11 @@ _(empty — updated as stories close)_
 **Decision:** v1 = Antecedentes Penales + Policiales. v2 = RENAP + MINEX behind feature flag.
 **Consequences:** Automation engine contract (`IGovPortalAdapter`) designed to support all four from day one; only v1 adapters implemented initially.
 
+### ADL-009 — Public Repo + Local-Only Sensitive Code
+**Context:** Repo made public so branch protection rulesets work on GitHub Free.
+**Decision:** Repo is public. PII processing code, gov-portal automation adapters (Playwright), and any credential-handling utilities are NEVER committed to this repo. They live locally or in a separate private repo. The public repo contains: portal UI, API contracts, queue infrastructure, payment abstractions, CI/CD, and non-sensitive utilities.
+**Consequences:** Contributors (future) can see the architecture but not the automation scripts that interact with gov portals. Separation of concerns enforces the security boundary at the repo level. Before onboarding contributors, establish clear guidelines on what can/cannot be committed.
+
 ### ADL-008 — Branch Model: main / dev / prod
 **Context:** User requested per-story pushes to `dev`, promotion to `prod` at launch.
 **Decision:**
@@ -183,7 +189,8 @@ _(empty — updated as stories close)_
 ## Technical Debt & Open Questions
 _(agents append here — never silently)_
 
-- [ ] _(empty)_
+- [ ] **Branch protection bypass for solo dev:** `required_approving_review_count=0` since sole developer cannot approve own PRs. CI gates are the real guard. Before onboarding any collaborator, raise to `1` required reviewer.
+- [ ] **Sensitive code not in repo:** PII handling (DPI encryption), gov-portal automation adapters, and Playwright scripts are local-only per ADL-009. Decide before v2 whether to use a private submodule or keep fully separate.
 
 ---
 
