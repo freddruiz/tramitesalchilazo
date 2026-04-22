@@ -22,18 +22,18 @@
 **Sprint Goal:** Secure repo scaffold, CI/CD gates, crypto primitives, audit log.
 
 ## Active User Story
-**ID:** S1-02
-**Title:** Crypto utilities (AES-GCM envelope, Argon2id, HMAC)
-**Assigned Model:** Claude Sonnet 4.6
+**ID:** S1-04
+**Title:** Zod schema conventions + error taxonomy
+**Assigned Model:** Haiku 4.5
 **Status:** NOT_STARTED
-**Branch:** `feature/S1-02-crypto-utils` (to be cut from `dev`)
-**Blockers:** none (depends on S1-01 scaffold)
+**Branch:** `feature/S1-04-zod-schemas` (to be cut from `dev`)
+**Blockers:** none (depends on S1-03 audit log)
 
 ### Contextual Continuity
-1. Read this file. Confirm Active Story = S1-01.
-2. Branch from `dev`: `git checkout -b feature/S1-01-repo-scaffold`
-3. Work only within repo root + `/apps/portal`, `/apps/worker` stubs, `/packages/shared` stubs, `/.github/`.
-4. On completion: PR to `dev` with AC + Security Constraint checklists ticked. Update this file (move S1-01 to Completed, promote S1-02 to Active).
+1. Read this file. Confirm Active Story = S1-03.
+2. Branch from `dev`: `git checkout -b feature/S1-03-audit-log`
+3. Work only within `packages/shared/audit/` and related test files.
+4. On completion: PR to `dev` with AC + Security Constraint checklists ticked. Update this file (move S1-03 to Completed, promote S1-04 to Active).
 
 ---
 
@@ -46,8 +46,8 @@
 
 ### Epic E1 — Foundation & Security Core
 - [x] S1-01  Initialize Secure Repository & CI/CD                          [Haiku 4.5]
-- [ ] S1-02  Crypto utilities (AES-GCM envelope, Argon2id, HMAC)           [Sonnet 4.6]
-- [ ] S1-03  Append-only audit log with hash chain                         [Sonnet 4.6]
+- [x] S1-02  Crypto utilities (AES-GCM envelope, Argon2id, HMAC)           [Sonnet 4.6]
+- [x] S1-03  Append-only audit log with hash chain                         [Sonnet 4.6]
 - [ ] S1-04  Zod schema conventions + error taxonomy                       [Haiku 4.5]
 - [ ] S1-05  Supabase project bootstrap + migrations baseline              [Sonnet 4.6]
 
@@ -113,6 +113,61 @@
 ---
 
 ## Completed
+
+### S1-03 — Append-only audit log with hash chain
+**Status:** COMPLETED (2026-04-22)
+**Branch:** `feature/S1-03-audit-log`
+**Summary:**
+- `supabase/migrations/001_audit_log.sql`: Creates audit_log table with hash chain columns (id, actor_id, action, resource_type, resource_id, ip_hash, user_agent, metadata, prev_hash, curr_hash, created_at); RLS policies granting INSERT-only to authenticated and service_role; REVOKE UPDATE/DELETE/TRUNCATE
+- `packages/shared/src/audit/types.ts`: AuditAction enum with 20 actions (auth.*, profile.*, request.*, document.*, payment.*, admin.*); AuditEntryInput and AuditEntry interfaces
+- `packages/shared/src/audit/logger.ts`: `writeAuditEntry(entry, dbClient)` reads last curr_hash, computes curr_hash=SHA256(prev_hash+actorId+action+resourceId+createdAt), hashes ipRaw via deterministicHmac, validates metadata for forbidden keys (password, dpi, token, authorization, secret, key); `verifyAuditChain(entries)` detects tampering by verifying prev_hash chain + hash reconstruction
+- `packages/shared/src/audit/index.ts`: barrel export of types and functions
+- 7 unit tests: all passing (IP hashing, metadata validation, 3-entry hash chain, tampering detection, genesis hash, field combinations)
+
+**AC Checklist:**
+- [x] `001_audit_log.sql` — audit_log table with required columns + RLS policies + REVOKE UPDATE/DELETE/TRUNCATE
+- [x] `audit/types.ts` — AuditAction enum with all 20 actions
+- [x] `audit/logger.ts` — writeAuditEntry with hash chain + IP hashing + metadata validation
+- [x] `audit/index.ts` — barrel export
+- [x] All 7 unit tests passing (chain, tampering detection, IP hashing)
+
+**Security Constraints:**
+- [x] Raw IP address never stored — always HMAC-SHA256 hashed before insert
+- [x] metadata JSONB rejects forbidden keys (password, dpi, token, authorization, secret, key) — runtime guard throws
+- [x] Application role INSERT-only on audit_log — UPDATE/DELETE/TRUNCATE explicitly revoked
+- [x] Hash chain integrity verified: prev_hash + curr_hash reconstruction detect any tampering
+
+---
+
+### S1-02 — Crypto utilities (AES-GCM envelope, Argon2id, HMAC)
+**Status:** COMPLETED (2026-04-22)
+**Branch:** `feature/S1-02-crypto-utils-clean`
+**Summary:**
+- `packages/shared/src/crypto/envelope.ts`: AES-256-GCM encrypt/decrypt; IV = `randomBytes(12)` per call; all outputs base64url
+- `packages/shared/src/crypto/kms.ts`: `generateDek` (`randomBytes(32)`), `wrapDek`/`unwrapDek` via `SUPABASE_VAULT_SECRET` env var only
+- `packages/shared/src/crypto/hash.ts`: `hashPassword`/`verifyPassword` Argon2id with memoryCost=65536, timeCost=3, parallelism=4; double-hash guard
+- `packages/shared/src/crypto/hmac.ts`: `deterministicHmac` HMAC-SHA256 hex for DPI lookup columns
+- `packages/shared/src/crypto/index.ts`: barrel export
+- `.github/semgrep.yml`: custom rules blocking MD5, SHA1, bcrypt, PBKDF2, AES-ECB, static/zeroed IVs
+- 14 unit tests: all passing (round-trip, IV randomness, salt randomness, verify correct/wrong, determinism, double-hash guard, auth-tag tamper detection)
+
+**AC Checklist:**
+- [x] `envelope.ts` — encrypt/decrypt AES-256-GCM, IV randomBytes(12), base64url output
+- [x] `kms.ts` — generateDek, wrapDek, unwrapDek via env var only
+- [x] `hash.ts` — argon2id mandatory params, double-hashing guard
+- [x] `hmac.ts` — HMAC-SHA256 hex deterministic
+- [x] `crypto/index.ts` — barrel export
+- [x] `.github/semgrep.yml` — rules blocking forbidden algorithms
+- [x] All 14 unit tests passing
+
+**Security Constraints:**
+- [x] Argon2id params: memoryCost=65536, timeCost=3, parallelism=4
+- [x] IV: randomBytes(12) per call — never static
+- [x] DEK: randomBytes(32) — never derived from password
+- [x] No plaintext keys in source — all from process.env
+- [x] Forbidden algorithms blocked by semgrep rule
+
+---
 
 ### S1-01 — Initialize Secure Repository & CI/CD
 **Status:** COMPLETED (2026-04-22)
