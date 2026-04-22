@@ -56,4 +56,3 @@ supabase/.temp/
 .vercel/
 .cache/
 .husky/_/
-pnpm-lock.yaml
