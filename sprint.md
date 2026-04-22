@@ -18,22 +18,25 @@
 ---
 
 ## Active Sprint
-**Sprint:** S1 — Foundation & Security Core
-**Sprint Goal:** Secure repo scaffold, CI/CD gates, crypto primitives, audit log.
+**Sprint:** S2 — Identity & Consent
+**Sprint Goal:** Google OAuth + Supabase session bridge, RBAC, profile completion, step-up auth, admin WebAuthn.
+
+> Sprint 1 (Foundation & Security Core) closed 2026-04-22.
+> Note: S1-03 (audit log hash chain) deferred — audit_log table schema is in place (migration 002); hash-chain writer implementation moved to S2 backlog.
 
 ## Active User Story
-**ID:** S1-02
-**Title:** Crypto utilities (AES-GCM envelope, Argon2id, HMAC)
-**Assigned Model:** Claude Sonnet 4.6
+**ID:** S2-01
+**Title:** Auth.js + Google OAuth + Supabase session bridge
+**Assigned Model:** Sonnet 4.6
 **Status:** NOT_STARTED
-**Branch:** `feature/S1-02-crypto-utils` (to be cut from `dev`)
-**Blockers:** none (depends on S1-01 scaffold)
+**Branch:** `feature/S2-01-auth-google-supabase` (to be cut from `dev`)
+**Blockers:** none (Supabase schema baseline in place from S1-05)
 
 ### Contextual Continuity
-1. Read this file. Confirm Active Story = S1-01.
-2. Branch from `dev`: `git checkout -b feature/S1-01-repo-scaffold`
-3. Work only within repo root + `/apps/portal`, `/apps/worker` stubs, `/packages/shared` stubs, `/.github/`.
-4. On completion: PR to `dev` with AC + Security Constraint checklists ticked. Update this file (move S1-01 to Completed, promote S1-02 to Active).
+1. Read this file. Confirm Active Story = S2-01.
+2. Branch from `dev`: `git checkout -b feature/S2-01-auth-google-supabase`
+3. Work within `apps/portal/` (Auth.js config, Supabase session adapter, middleware).
+4. On completion: PR to `dev` with AC + Security Constraint checklists ticked. Update this file (move S2-01 to Completed, promote S2-02 to Active).
 
 ---
 
@@ -46,10 +49,10 @@
 
 ### Epic E1 — Foundation & Security Core
 - [x] S1-01  Initialize Secure Repository & CI/CD                          [Haiku 4.5]
-- [ ] S1-02  Crypto utilities (AES-GCM envelope, Argon2id, HMAC)           [Sonnet 4.6]
-- [ ] S1-03  Append-only audit log with hash chain                         [Sonnet 4.6]
-- [ ] S1-04  Zod schema conventions + error taxonomy                       [Haiku 4.5]
-- [ ] S1-05  Supabase project bootstrap + migrations baseline              [Sonnet 4.6]
+- [x] S1-02  Crypto utilities (AES-GCM envelope, Argon2id, HMAC)           [Sonnet 4.6]
+- [ ] S1-03  Append-only audit log with hash chain (deferred — see tech debt)[Sonnet 4.6]
+- [x] S1-04  Zod schema conventions + error taxonomy                       [Haiku 4.5]
+- [x] S1-05  Supabase project bootstrap + migrations baseline              [Sonnet 4.6]
 
 ### Epic E2 — Identity & Consent
 - [ ] S2-01  Auth.js + Google OAuth + Supabase session bridge              [Sonnet 4.6]
@@ -113,6 +116,89 @@
 ---
 
 ## Completed
+
+### S1-05 — Supabase project bootstrap + migrations baseline
+**Status:** COMPLETED (2026-04-22)
+**Branch:** `feature/S1-05-supabase-bootstrap`
+**Summary:**
+- `supabase/config.toml`: local dev configuration with Postgres 15, Studio, Inbucket, Google OAuth stubs (all via env vars)
+- `supabase/migrations/002_core_tables.sql`: all 7 ENUMs (user_role_enum, kyc_status_enum, gov_portal_enum, service_enum, request_status_enum, payment_method_enum, payment_status_enum); tables: users (auth.users mirror with trigger), user_profiles (BYTEA columns for DPI/name/phone ciphertext, dpi_hmac for deduplication, dek_id for KMS), external_credentials (BYTEA username_encrypted + password_encrypted, dek_id), service_requests (lifecycle with status enum), documents (expires_at for 20-day retention), payments (amount_cents server-authoritative, provider_event_id UNIQUE for webhook idempotency), audit_log (append-only hash-chain schema)
+- `supabase/migrations/003_rls.sql`: RLS enabled on all 7 tables before any policies; client policies: SELECT+UPDATE own users/user_profiles; INSERT+SELECT own service_requests (INSERT locked to pending_payment); SELECT own documents via service_requests JOIN; SELECT+INSERT own payments (INSERT locked to pending); no client policies on external_credentials or audit_log
+- `supabase/migrations/004_audit_log_grants.sql`: REVOKE ALL on audit_log from anon and authenticated; service_role INSERT-only enforced; append-only contract documented
+- `.env.example`: added SUPABASE_VAULT_SECRET placeholder; added server-side-only comment on SUPABASE_SERVICE_ROLE_KEY
+
+**AC Checklist:**
+- [x] `supabase/config.toml` present
+- [x] `002_core_tables.sql` — all ENUMs + all tables with correct types, constraints, indexes, updated_at triggers
+- [x] `003_rls.sql` — RLS enabled on all tables; client policies as specified; no client access to external_credentials or audit_log
+- [x] `004_audit_log_grants.sql` — INSERT-only grant on audit_log confirmed (revoke from anon + authenticated)
+- [x] `.env.example` updated: NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_VAULT_SECRET — all placeholders, no real values
+- [x] `supabase/` committed; zero real credentials anywhere in repo
+
+**Security Constraints:**
+- [x] RLS enabled on every table before any data policies applied
+- [x] SUPABASE_SERVICE_ROLE_KEY server-side only — explicit comment in .env.example, never NEXT_PUBLIC_
+- [x] external_credentials columns are BYTEA (ciphertext only) — confirmed by SQL comments in migration
+- [x] No seed data or test data with real names, emails, DPI, or credentials
+
+---
+
+### S1-04 — Zod schema conventions + error taxonomy
+**Status:** COMPLETED (2026-04-22)
+**Branch:** `feature/S1-04-zod-errors`
+**Summary:**
+- `packages/shared/src/contracts/schemas/base.ts`: paginationSchema (page min 1, limit 1-100), uuidSchema, guatemalaDpiSchema (13-digit CUI with checksum validation), emailSchema (trim + lowercase), passwordSchema (12+ chars with uppercase, lowercase, digit, special char). All schemas use .strict() mode.
+- `packages/shared/src/errors/codes.ts`: ErrorCode const enum with 18 codes (AUTH_INVALID_CREDENTIALS, AUTH_TOKEN_EXPIRED, AUTH_INSUFFICIENT_PERMISSIONS, AUTH_STEP_UP_REQUIRED, PROFILE_INCOMPLETE, PROFILE_DPI_DUPLICATE, PROFILE_CONSENT_REQUIRED, REQUEST_NOT_FOUND, REQUEST_INVALID_TRANSITION, PAYMENT_AMOUNT_MISMATCH, PAYMENT_GATEWAY_ERROR, PAYMENT_DUPLICATE, DOCUMENT_NOT_FOUND, DOCUMENT_EXPIRED, DOCUMENT_ACCESS_DENIED, ADMIN_UNAUTHORIZED, VALIDATION_FAILED, INTERNAL_ERROR)
+- `packages/shared/src/errors/AppError.ts`: Custom error class extending Error with code (ErrorCode), statusCode (number), isOperational (boolean, default true)
+- `packages/shared/src/errors/handler.ts`: formatApiError(err) returning {code, message, statusCode}; operational errors expose message, non-operational return generic "unexpected error" and log real error server-side only
+- `contracts/index.ts` + `errors/index.ts`: barrel exports
+- 30 unit tests: 20 schema tests + 10 error handler tests; all passing
+
+**AC Checklist:**
+- [x] `base.ts` — paginationSchema, uuidSchema, guatemalaDpiSchema, emailSchema, passwordSchema, all .strict()
+- [x] `codes.ts` — ErrorCode const enum with all 18 codes
+- [x] `AppError.ts` — custom error class with code, statusCode, isOperational
+- [x] `handler.ts` — formatApiError with operational vs non-operational handling
+- [x] `contracts/index.ts` + `errors/index.ts` — barrel exports
+- [x] All 30 unit tests passing (schema + handler)
+
+**Security Constraints:**
+- [x] formatApiError never exposes stack traces or internal messages for non-operational errors
+- [x] Never exposes raw DB/SQL error messages in any API response
+- [x] Guatemala DPI validation uses correct checksum algorithm (weights 2,3,4,5,6,7,8,9)
+- [x] Password schema enforces all four character classes (uppercase, lowercase, digit, special)
+
+---
+
+### S1-02 — Crypto utilities (AES-GCM envelope, Argon2id, HMAC)
+**Status:** COMPLETED (2026-04-22)
+**Branch:** `feature/S1-02-crypto-utils-clean`
+**Summary:**
+- `packages/shared/src/crypto/envelope.ts`: AES-256-GCM encrypt/decrypt; IV = `randomBytes(12)` per call; all outputs base64url
+- `packages/shared/src/crypto/kms.ts`: `generateDek` (`randomBytes(32)`), `wrapDek`/`unwrapDek` via `SUPABASE_VAULT_SECRET` env var only
+- `packages/shared/src/crypto/hash.ts`: `hashPassword`/`verifyPassword` Argon2id with memoryCost=65536, timeCost=3, parallelism=4; double-hash guard
+- `packages/shared/src/crypto/hmac.ts`: `deterministicHmac` HMAC-SHA256 hex for DPI lookup columns
+- `packages/shared/src/crypto/index.ts`: barrel export
+- `.github/semgrep.yml`: custom rules blocking MD5, SHA1, bcrypt, PBKDF2, AES-ECB, static/zeroed IVs
+- 14 unit tests: all passing (round-trip, IV randomness, salt randomness, verify correct/wrong, determinism, double-hash guard, auth-tag tamper detection)
+
+**AC Checklist:**
+- [x] `envelope.ts` — encrypt/decrypt AES-256-GCM, IV randomBytes(12), base64url output
+- [x] `kms.ts` — generateDek, wrapDek, unwrapDek via env var only
+- [x] `hash.ts` — argon2id mandatory params, double-hashing guard
+- [x] `hmac.ts` — HMAC-SHA256 hex deterministic
+- [x] `crypto/index.ts` — barrel export
+- [x] `.github/semgrep.yml` — rules blocking forbidden algorithms
+- [x] All 14 unit tests passing
+
+**Security Constraints:**
+- [x] Argon2id params: memoryCost=65536, timeCost=3, parallelism=4
+- [x] IV: randomBytes(12) per call — never static
+- [x] DEK: randomBytes(32) — never derived from password
+- [x] No plaintext keys in source — all from process.env
+- [x] Forbidden algorithms blocked by semgrep rule
+
+---
 
 ### S1-01 — Initialize Secure Repository & CI/CD
 **Status:** COMPLETED (2026-04-22)
@@ -184,11 +270,26 @@
 
 ---
 
+## Sprint 2 — Identity & Consent
+
+**Sprint Goal:** Implement Google OAuth + Supabase session bridge; enforce RBAC via middleware; collect DPI + consent; add step-up auth; implement admin WebAuthn + TOTP.
+
+| Story | Title | Model | Status |
+|-------|-------|-------|--------|
+| S2-01 | Auth.js + Google OAuth + Supabase session bridge | Sonnet 4.6 | ACTIVE |
+| S2-02 | Session middleware + RBAC + RLS policies | Sonnet 4.6 | NOT_STARTED |
+| S2-03 | DPI profile completion + consent capture | Sonnet 4.6 | NOT_STARTED |
+| S2-04 | Step-up auth with secondary password | Sonnet 4.6 | NOT_STARTED |
+| S2-05 | Admin WebAuthn (passkeys) + TOTP fallback + IP allowlist | Sonnet 4.6 | NOT_STARTED |
+
+---
+
 ## Technical Debt & Open Questions
 _(agents append here — never silently)_
 
 - [ ] **Branch protection bypass for solo dev:** `required_approving_review_count=0` since sole developer cannot approve own PRs. CI gates are the real guard. Before onboarding any collaborator, raise to `1` required reviewer.
 - [ ] **Sensitive code not in repo:** PII handling (DPI encryption), gov-portal automation adapters, and Playwright scripts are local-only per ADL-009. Decide before v2 whether to use a private submodule or keep fully separate.
+- [ ] **S1-03 deferred (audit log hash-chain writer):** The audit_log table schema is in place (migration 002 — columns: hash, prev_hash, actor_id, action, entity, changes). The hash-chain writer logic (`packages/shared/src/audit/`) was deferred when Sprint 1 closed. Implement in S2 or as a standalone story before any production data writes. The DB schema is forward-compatible; no migration changes needed.
 
 ---
 
