@@ -25,17 +25,17 @@
 > S1-03 (audit log hash-chain writer) deferred — audit_log table schema in place (migration 002); hash-chain writer moved to S2 tech debt.
 
 ## Active User Story
-**ID:** S2-03
-**Title:** DPI profile completion + consent capture
+**ID:** S2-04
+**Title:** Step-up auth with secondary password
 **Assigned Model:** Sonnet 4.6
 **Status:** NOT_STARTED
-**Branch:** `feature/S2-03-profile-consent` (to be cut from `dev`)
-**Blockers:** none (session + RBAC in place from S2-02)
+**Branch:** `feature/S2-04-step-up-auth` (to be cut from `dev`)
+**Blockers:** none (secondary_password_hash in place from S2-03)
 
 ### Contextual Continuity
-1. Read this file. Confirm Active Story = S2-03.
-2. Branch from `dev`: `git checkout -b feature/S2-03-profile-consent`
-3. Work within `apps/portal/` (DPI form, consent capture, profile-complete flow).
+1. Read this file. Confirm Active Story = S2-04.
+2. Branch from `dev`: `git checkout -b feature/S2-04-step-up-auth`
+3. Work within `apps/portal/` (step-up verification endpoint, session JWT update).
 4. On completion: PR to `dev` with AC + Security Constraint checklists ticked. Update this file.
 
 ---
@@ -57,7 +57,7 @@
 ### Epic E2 — Identity & Consent
 - [x] S2-01  Auth.js + Google OAuth + Supabase session bridge              [Sonnet 4.6]
 - [x] S2-02  Session middleware + RBAC + RLS policies                      [Sonnet 4.6]
-- [ ] S2-03  DPI profile completion + consent capture                      [Sonnet 4.6]
+- [x] S2-03  DPI profile completion + consent capture                      [Sonnet 4.6]
 - [ ] S2-04  Step-up auth with secondary password                          [Sonnet 4.6]
 - [ ] S2-05  Admin WebAuthn (passkeys) + TOTP fallback + IP allowlist      [Sonnet 4.6]
 
@@ -116,6 +116,36 @@
 ---
 
 ## Completed
+
+### S2-03 — DPI profile completion + consent capture
+**Status:** COMPLETED (2026-04-23)
+**Branch:** `feature/S2-03-dpi-profile`
+**Summary:**
+- `supabase/migrations/007_user_profiles_dpi.sql`: adds `full_name`, `dpi_encrypted` (JSONB, AES-256-GCM envelope), `dek_wrapped` (TEXT, per-user DEK wrapped under KMS master key), `dpi_hmac` (TEXT, unique — HMAC-SHA256 for duplicate detection), `secondary_password_hash` (TEXT) to `user_profiles`; adds `consent_version` + `consent_accepted_at` to `users`; RLS policies for select/insert/update own profile; `touch_updated_at` trigger
+- `apps/portal/lib/schemas/profile.ts`: `guatemalaDpiSchema` (13-digit + RENAP CUI checksum), `passwordSchema` (min 8, upper/lower/digit), `profileCompleteSchema` (.strict() — rejects extra fields)
+- `apps/portal/app/api/profile/complete/route.ts`: POST handler; rate-limited (5/IP/hour, in-memory); Zod validation; Argon2id hash of secondary_password; per-user DEK generated + wrapped via kms.ts; DPI encrypted via envelope.ts; HMAC computed via deterministicHmac (HMAC_SECRET env); inserts `user_profiles` row; updates `users.consent_version` + `consent_accepted_at`; returns `{ ok: true }` on success; 409 on unique constraint (dpi_hmac collision); 422 on Zod failure; DPI plaintext never logged/returned
+- `apps/portal/app/onboarding/page.tsx`: full client-side form (full_name, DPI, secondary_password, confirm_password, consent checkbox); field-level Zod error display; redirect to /dashboard on success; rate-limit, duplicate-DPI, and generic error messages
+- `apps/portal/lib/errors/index.ts`: added `PROFILE_VALIDATION`, `PROFILE_DUPLICATE_DPI`, `PROFILE_ALREADY_COMPLETE`, `RATE_LIMIT_EXCEEDED` to `ErrorCode` union
+- `apps/portal/package.json`: added `zod@3.23.8` and `@tramitesalchilazo/shared@workspace:*`
+- `packages/shared/tsconfig.json`: added `"noEmit": false` (root tsconfig has `noEmit: true`; without this, `tsc` built no output even with `outDir` set)
+- `.env.example`: `SUPABASE_VAULT_SECRET` (base64url 32-byte KMS master key), `HMAC_SECRET` (min 32 bytes, separate from NEXTAUTH_SECRET), `CONSENT_VERSION` (e.g. "v1.0")
+- 12 new unit tests: 5 AC-required cases + 7 schema unit tests; all 45 tests in the suite passing
+
+**AC Checklist:**
+- [x] `/onboarding` page: full_name, DPI (13-digit), secondary_password, confirm_password, legal consent checkbox
+- [x] `POST /api/profile/complete`: Zod `.strict()` validation (gujaratDpiSchema + passwordSchema); Argon2id hash; per-user DEK + wrap; AES-256-GCM encrypt DPI; HMAC dpi_hmac; insert `user_profiles`; update consent on `users`; redirect to /dashboard
+- [x] Middleware: `/(client)/*` routes redirect to /onboarding if `!profileComplete` (handled via `CLIENT_PREFIXES` guard in middleware.ts, in place since S2-02)
+- [x] `.env.example`: `HMAC_SECRET`, `CONSENT_VERSION`, `SUPABASE_VAULT_SECRET`
+- [x] Unit tests: valid DPI → 200; invalid checksum → 422; duplicate DPI → 409; ciphertext randomness; extra fields → 422
+
+**Security Constraints:**
+- [x] DPI plaintext never in logs, error messages, DB columns, URL params, or client state — used only within route handler scope
+- [x] Secondary password: Argon2id (memoryCost=65536, timeCost=3, parallelism=4) via `packages/shared/src/crypto/hash.ts`
+- [x] `dpi_hmac` uses dedicated `HMAC_SECRET` env var — not NEXTAUTH_SECRET
+- [x] Consent version stored as string (`CONSENT_VERSION`) — version bump forces re-consent
+- [x] Rate limit: 5 requests per IP per hour on `POST /api/profile/complete`
+
+---
 
 ### S2-02 — Session middleware + RBAC + RLS policies
 **Status:** COMPLETED (2026-04-23)

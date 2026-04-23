@@ -1,7 +1,11 @@
 export type ErrorCode =
   | 'AUTH_UNAUTHENTICATED'
   | 'AUTH_INSUFFICIENT_PERMISSIONS'
-  | 'AUTH_STEP_UP_REQUIRED';
+  | 'AUTH_STEP_UP_REQUIRED'
+  | 'PROFILE_VALIDATION'
+  | 'PROFILE_DUPLICATE_DPI'
+  | 'PROFILE_ALREADY_COMPLETE'
+  | 'RATE_LIMIT_EXCEEDED';
 
 export class AppError extends Error {
   readonly code: ErrorCode;
