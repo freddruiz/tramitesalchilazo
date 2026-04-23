@@ -5,8 +5,12 @@
     "paths": {
       "@/*": [
         "./*"
-      ]
+      ],
+      "next-auth": ["./node_modules/next-auth"],
+      "next-auth/*": ["./node_modules/next-auth/*"]
     },
+    "declaration": false,
+    "declarationMap": false,
     "incremental": true,
     "jsx": "preserve",
     "plugins": [
