@@ -25,6 +25,19 @@ export default auth((req) => {
   const { pathname } = req.nextUrl;
   const origin = req.nextUrl.origin;
 
+  // Admin-route guard — checked first so both unauthenticated requests and
+  // wrong-role requests receive identical 403 responses (no information oracle).
+  // Role is read from the signed JWT, never from a client-supplied header.
+  if (isAdminRoute(pathname)) {
+    if (!session || session.user.role !== 'admin') {
+      return new NextResponse(JSON.stringify({ error: 'Forbidden' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    return NextResponse.next();
+  }
+
   // Unauthenticated → redirect protected routes to /login
   if (!session && isProtected(pathname)) {
     const loginUrl = new URL('/login', origin);
@@ -43,15 +56,9 @@ export default auth((req) => {
     session &&
     !session.user.profileComplete &&
     isProtected(pathname) &&
-    pathname !== '/onboarding' &&
-    !isAdminRoute(pathname)
+    pathname !== '/onboarding'
   ) {
     return NextResponse.redirect(new URL('/onboarding', origin));
-  }
-
-  // Admin-role guard: only role=admin may access /admin/*
-  if (session && isAdminRoute(pathname) && session.user.role !== 'admin') {
-    return NextResponse.redirect(new URL('/dashboard', origin));
   }
 
   return NextResponse.next();

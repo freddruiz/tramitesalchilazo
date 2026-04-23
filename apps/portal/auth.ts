@@ -97,6 +97,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       session.user.id = (token.userId as string | undefined) ?? '';
       session.user.role = (token.role as string | undefined) ?? 'client';
       session.user.profileComplete = (token.profileComplete as boolean | undefined) ?? false;
+      session.user.stepUpVerifiedAt = token.stepUpVerifiedAt as number | undefined;
       // google_sub is intentionally NOT exposed in the session object
       return session;
     },

@@ -25,18 +25,18 @@
 > S1-03 (audit log hash-chain writer) deferred — audit_log table schema in place (migration 002); hash-chain writer moved to S2 tech debt.
 
 ## Active User Story
-**ID:** S2-02
-**Title:** Session middleware + RBAC + RLS policies
+**ID:** S2-03
+**Title:** DPI profile completion + consent capture
 **Assigned Model:** Sonnet 4.6
 **Status:** NOT_STARTED
-**Branch:** `feature/S2-02-rbac-rls` (to be cut from `dev`)
-**Blockers:** none (Auth.js session + Supabase schema in place from S2-01 + S1-05)
+**Branch:** `feature/S2-03-profile-consent` (to be cut from `dev`)
+**Blockers:** none (session + RBAC in place from S2-02)
 
 ### Contextual Continuity
-1. Read this file. Confirm Active Story = S2-02.
-2. Branch from `dev`: `git checkout -b feature/S2-02-rbac-rls`
-3. Work within `apps/portal/` (middleware RBAC rules, Supabase JWT bridge, RLS policy updates).
-4. On completion: PR to `dev` with AC + Security Constraint checklists ticked. Update this file (move S2-02 to Completed, promote S2-03 to Active).
+1. Read this file. Confirm Active Story = S2-03.
+2. Branch from `dev`: `git checkout -b feature/S2-03-profile-consent`
+3. Work within `apps/portal/` (DPI form, consent capture, profile-complete flow).
+4. On completion: PR to `dev` with AC + Security Constraint checklists ticked. Update this file.
 
 ---
 
@@ -56,7 +56,7 @@
 
 ### Epic E2 — Identity & Consent
 - [x] S2-01  Auth.js + Google OAuth + Supabase session bridge              [Sonnet 4.6]
-- [ ] S2-02  Session middleware + RBAC + RLS policies                      [Sonnet 4.6]
+- [x] S2-02  Session middleware + RBAC + RLS policies                      [Sonnet 4.6]
 - [ ] S2-03  DPI profile completion + consent capture                      [Sonnet 4.6]
 - [ ] S2-04  Step-up auth with secondary password                          [Sonnet 4.6]
 - [ ] S2-05  Admin WebAuthn (passkeys) + TOTP fallback + IP allowlist      [Sonnet 4.6]
@@ -116,6 +116,37 @@
 ---
 
 ## Completed
+
+### S2-02 — Session middleware + RBAC + RLS policies
+**Status:** COMPLETED (2026-04-23)
+**Branch:** `feature/S2-02-rbac-middleware`
+**Summary:**
+- `apps/portal/lib/errors/index.ts`: `AppError` class + `ErrorCode` union (`AUTH_UNAUTHENTICATED`, `AUTH_INSUFFICIENT_PERMISSIONS`, `AUTH_STEP_UP_REQUIRED`)
+- `apps/portal/lib/auth/session.ts`: `getSession()` — calls `auth()` server-side; returns typed `AppSession` (`userId`, `role`, `profileComplete`, `stepUpVerifiedAt`); returns `null` if unauthenticated
+- `apps/portal/lib/auth/rbac.ts`: `requireRole(role: UserRole)` factory; throws `AppError(AUTH_INSUFFICIENT_PERMISSIONS, 403)` for wrong role OR no session; role read from signed JWT only
+- `apps/portal/lib/auth/stepUp.ts`: `requireStepUp()` factory; 15-minute window, fixed — no configurable override; throws `AUTH_STEP_UP_REQUIRED` if absent or expired; `stepUpVerifiedAt` field wired through JWT/session callbacks (populated in S2-04)
+- `apps/portal/lib/supabase/server.ts`: `createServerClient(userId)` — generates a 1-min HS256 JWT (sub=userId, role=authenticated) via Web Crypto API (no extra package); passes as Authorization Bearer so `auth.uid()` works in RLS; also calls `set_app_current_user` to populate `current_setting('app.current_user_id', true)`
+- `apps/portal/middleware.ts`: admin routes (`/(admin)/*`) now return identical `403 { error: 'Forbidden' }` for both unauthenticated AND wrong-role requests (no information oracle); checked before the general `/login` redirect
+- `apps/portal/types/next-auth.d.ts`: added `stepUpVerifiedAt?: number` to `Session.user` and `JWT`
+- `apps/portal/auth.ts`: `session` callback forwards `stepUpVerifiedAt` from token
+- `supabase/migrations/006_rls_jwt_bridge.sql`: `set_app_current_user(uuid)` SECURITY DEFINER function; grants to `authenticated` only
+- `.env.example`: `SUPABASE_JWT_SECRET` added
+- 19 unit tests: all passing (9 smoke + 5 requireRole + 5 requireStepUp)
+
+**AC Checklist:**
+- [x] `apps/portal/lib/auth/session.ts` — `getSession()` returns typed session with `userId` + `role`
+- [x] `apps/portal/lib/auth/rbac.ts` — `requireRole(role)` factory throws 403 `AUTH_INSUFFICIENT_PERMISSIONS` if role mismatch
+- [x] `apps/portal/lib/auth/stepUp.ts` — `requireStepUp()` checks `stepUpVerifiedAt` within 15 min; throws 403 `AUTH_STEP_UP_REQUIRED` if absent or expired
+- [x] `apps/portal/middleware.ts` — `/(admin)/*` returns 403 for wrong role; identical response for unauthenticated (no info oracle)
+- [x] `apps/portal/lib/supabase/server.ts` — `createServerClient(userId)` sets `app.current_user_id` via JWT bridge + RPC
+- [x] Unit tests: `requireRole('admin')` with client → 403; `requireRole('client')` with client → pass; `requireStepUp()` expired → 403; `requireStepUp()` fresh → pass
+
+**Security Constraints:**
+- [x] Role check server-side from JWT — never from client-supplied header or body field
+- [x] Step-up window exactly 15 minutes — no configurable override; constant in `stepUp.ts`
+- [x] Admin routes return identical 403 for wrong role vs. unauthenticated — admin guard checked before the login redirect branch
+
+---
 
 ### S2-01 — Auth.js v5 + Google OAuth + Supabase session bridge
 **Status:** COMPLETED (2026-04-23)
