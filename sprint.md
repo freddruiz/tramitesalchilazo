@@ -18,22 +18,25 @@
 ---
 
 ## Active Sprint
-**Sprint:** S1 — Foundation & Security Core
-**Sprint Goal:** Secure repo scaffold, CI/CD gates, crypto primitives, audit log.
+**Sprint:** S2 — Identity & Consent
+**Sprint Goal:** Google OAuth + Supabase session bridge, RBAC, profile completion, step-up auth, admin WebAuthn.
+
+> Sprint 1 (Foundation & Security Core) closed 2026-04-22.
+> S1-03 (audit log hash-chain writer) deferred — audit_log table schema in place (migration 002); hash-chain writer moved to S2 tech debt.
 
 ## Active User Story
-**ID:** S1-02
-**Title:** Crypto utilities (AES-GCM envelope, Argon2id, HMAC)
-**Assigned Model:** Claude Sonnet 4.6
+**ID:** S2-03
+**Title:** DPI profile completion + consent capture
+**Assigned Model:** Sonnet 4.6
 **Status:** NOT_STARTED
-**Branch:** `feature/S1-02-crypto-utils` (to be cut from `dev`)
-**Blockers:** none (depends on S1-01 scaffold)
+**Branch:** `feature/S2-03-profile-consent` (to be cut from `dev`)
+**Blockers:** none (session + RBAC in place from S2-02)
 
 ### Contextual Continuity
-1. Read this file. Confirm Active Story = S1-01.
-2. Branch from `dev`: `git checkout -b feature/S1-01-repo-scaffold`
-3. Work only within repo root + `/apps/portal`, `/apps/worker` stubs, `/packages/shared` stubs, `/.github/`.
-4. On completion: PR to `dev` with AC + Security Constraint checklists ticked. Update this file (move S1-01 to Completed, promote S1-02 to Active).
+1. Read this file. Confirm Active Story = S2-03.
+2. Branch from `dev`: `git checkout -b feature/S2-03-profile-consent`
+3. Work within `apps/portal/` (DPI form, consent capture, profile-complete flow).
+4. On completion: PR to `dev` with AC + Security Constraint checklists ticked. Update this file.
 
 ---
 
@@ -46,14 +49,14 @@
 
 ### Epic E1 — Foundation & Security Core
 - [x] S1-01  Initialize Secure Repository & CI/CD                          [Haiku 4.5]
-- [ ] S1-02  Crypto utilities (AES-GCM envelope, Argon2id, HMAC)           [Sonnet 4.6]
-- [ ] S1-03  Append-only audit log with hash chain                         [Sonnet 4.6]
-- [ ] S1-04  Zod schema conventions + error taxonomy                       [Haiku 4.5]
-- [ ] S1-05  Supabase project bootstrap + migrations baseline              [Sonnet 4.6]
+- [x] S1-02  Crypto utilities (AES-GCM envelope, Argon2id, HMAC)           [Sonnet 4.6]
+- [ ] S1-03  Append-only audit log with hash chain (deferred — see tech debt)[Sonnet 4.6]
+- [x] S1-04  Zod schema conventions + error taxonomy                       [Haiku 4.5]
+- [x] S1-05  Supabase project bootstrap + migrations baseline              [Sonnet 4.6]
 
 ### Epic E2 — Identity & Consent
-- [ ] S2-01  Auth.js + Google OAuth + Supabase session bridge              [Sonnet 4.6]
-- [ ] S2-02  Session middleware + RBAC + RLS policies                      [Sonnet 4.6]
+- [x] S2-01  Auth.js + Google OAuth + Supabase session bridge              [Sonnet 4.6]
+- [x] S2-02  Session middleware + RBAC + RLS policies                      [Sonnet 4.6]
 - [ ] S2-03  DPI profile completion + consent capture                      [Sonnet 4.6]
 - [ ] S2-04  Step-up auth with secondary password                          [Sonnet 4.6]
 - [ ] S2-05  Admin WebAuthn (passkeys) + TOTP fallback + IP allowlist      [Sonnet 4.6]
@@ -113,6 +116,105 @@
 ---
 
 ## Completed
+
+### S2-02 — Session middleware + RBAC + RLS policies
+**Status:** COMPLETED (2026-04-23)
+**Branch:** `feature/S2-02-rbac-middleware`
+**Summary:**
+- `apps/portal/lib/errors/index.ts`: `AppError` class + `ErrorCode` union (`AUTH_UNAUTHENTICATED`, `AUTH_INSUFFICIENT_PERMISSIONS`, `AUTH_STEP_UP_REQUIRED`)
+- `apps/portal/lib/auth/session.ts`: `getSession()` — calls `auth()` server-side; returns typed `AppSession` (`userId`, `role`, `profileComplete`, `stepUpVerifiedAt`); returns `null` if unauthenticated
+- `apps/portal/lib/auth/rbac.ts`: `requireRole(role: UserRole)` factory; throws `AppError(AUTH_INSUFFICIENT_PERMISSIONS, 403)` for wrong role OR no session; role read from signed JWT only
+- `apps/portal/lib/auth/stepUp.ts`: `requireStepUp()` factory; 15-minute window, fixed — no configurable override; throws `AUTH_STEP_UP_REQUIRED` if absent or expired; `stepUpVerifiedAt` field wired through JWT/session callbacks (populated in S2-04)
+- `apps/portal/lib/supabase/server.ts`: `createServerClient(userId)` — generates a 1-min HS256 JWT (sub=userId, role=authenticated) via Web Crypto API (no extra package); passes as Authorization Bearer so `auth.uid()` works in RLS; also calls `set_app_current_user` to populate `current_setting('app.current_user_id', true)`
+- `apps/portal/middleware.ts`: admin routes (`/(admin)/*`) now return identical `403 { error: 'Forbidden' }` for both unauthenticated AND wrong-role requests (no information oracle); checked before the general `/login` redirect
+- `apps/portal/types/next-auth.d.ts`: added `stepUpVerifiedAt?: number` to `Session.user` and `JWT`
+- `apps/portal/auth.ts`: `session` callback forwards `stepUpVerifiedAt` from token
+- `supabase/migrations/006_rls_jwt_bridge.sql`: `set_app_current_user(uuid)` SECURITY DEFINER function; grants to `authenticated` only
+- `.env.example`: `SUPABASE_JWT_SECRET` added
+- 19 unit tests: all passing (9 smoke + 5 requireRole + 5 requireStepUp)
+
+**AC Checklist:**
+- [x] `apps/portal/lib/auth/session.ts` — `getSession()` returns typed session with `userId` + `role`
+- [x] `apps/portal/lib/auth/rbac.ts` — `requireRole(role)` factory throws 403 `AUTH_INSUFFICIENT_PERMISSIONS` if role mismatch
+- [x] `apps/portal/lib/auth/stepUp.ts` — `requireStepUp()` checks `stepUpVerifiedAt` within 15 min; throws 403 `AUTH_STEP_UP_REQUIRED` if absent or expired
+- [x] `apps/portal/middleware.ts` — `/(admin)/*` returns 403 for wrong role; identical response for unauthenticated (no info oracle)
+- [x] `apps/portal/lib/supabase/server.ts` — `createServerClient(userId)` sets `app.current_user_id` via JWT bridge + RPC
+- [x] Unit tests: `requireRole('admin')` with client → 403; `requireRole('client')` with client → pass; `requireStepUp()` expired → 403; `requireStepUp()` fresh → pass
+
+**Security Constraints:**
+- [x] Role check server-side from JWT — never from client-supplied header or body field
+- [x] Step-up window exactly 15 minutes — no configurable override; constant in `stepUp.ts`
+- [x] Admin routes return identical 403 for wrong role vs. unauthenticated — admin guard checked before the login redirect branch
+
+---
+
+### S2-01 — Auth.js v5 + Google OAuth + Supabase session bridge
+**Status:** COMPLETED (2026-04-23)
+**Branch:** `feature/S2-01-google-oauth`
+**Summary:**
+- `apps/portal/auth.ts`: NextAuth v5 config; Google provider; JWT strategy (15-min access token, 7-day session window); httpOnly+Secure+SameSite=Lax cookies explicitly configured; `signIn` callback upserts `public.users` via Supabase service_role; `jwt` callback stores `userId`, `role`, `profileComplete`; `google_sub` never exposed in session or API responses
+- `apps/portal/app/api/auth/[...nextauth]/route.ts`: catch-all handler for `/api/auth/*`; Auth.js CSRF protection enabled (not disabled)
+- `apps/portal/middleware.ts`: protects `(client)/*` routes (`/dashboard`, `/requests`, `/documents`, `/profile`) and `(admin)/*`; unauthenticated → `/login?callbackUrl=...`; profile incomplete → `/onboarding`; role=admin guard on `/admin/*`
+- `apps/portal/app/login/page.tsx`: Google sign-in page using Server Action
+- `apps/portal/app/onboarding/page.tsx`: stub; server-side session check + redirect logic
+- `apps/portal/app/(client)/dashboard/page.tsx`: protected stub; sign-out Server Action
+- `apps/portal/types/next-auth.d.ts`: Session + JWT module augmentation
+- `supabase/migrations/005_auth_google_users.sql`: drops `auth.users` FK from `users` table, adds `google_sub TEXT UNIQUE`, drops auth sync trigger (Auth.js manages user lifecycle)
+- `.env.example`: NEXTAUTH_SECRET generation command documented (`openssl rand -base64 32`)
+- 9 middleware smoke tests: all passing
+
+**AC Checklist:**
+- [x] Auth.js v5 (NextAuth) installed in apps/portal (`5.0.0-beta.25`)
+- [x] Google OAuth provider configured; callback URL `/api/auth/callback/google`
+- [x] On first Google sign-in: user row upserted in `users` table (`google_sub`, `email`, `role=client`)
+- [x] Session strategy: JWT with 15-min access token (`jwt.maxAge`), 7-day refresh (`session.maxAge`)
+- [x] Session cookie: `httpOnly=true`, `secure=true` (prod), `sameSite=lax`, `path=/`
+- [x] After OAuth callback: redirects to `/onboarding` if `profileComplete=false`; else `/dashboard` (via middleware)
+- [x] `middleware.ts`: all `/(client)/*` and `/(admin)/*` routes protected; redirect to `/login` if no session
+- [x] `/api/auth/*` route handler wired (`handlers` export)
+- [x] `.env.example` updated: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `NEXTAUTH_SECRET` (with generation command), `NEXTAUTH_URL`
+- [x] No credentials committed; all env vars from `process.env` only
+- [x] Smoke test: `isProtected('/dashboard')` = true, `isProtected('/login')` = false — 9/9 passing
+
+**Security Constraints:**
+- [x] `NEXTAUTH_SECRET` min 32 bytes — generation command `openssl rand -base64 32` in `.env.example`
+- [x] Session cookies: `httpOnly` + `Secure` (prod) + `SameSite=Lax` — explicitly configured in `auth.ts`
+- [x] `google_sub` stored in DB only; never in JWT payload exposed to client; `session.user` has no `google_sub` field
+- [x] CSRF: Auth.js built-in CSRF token active — not disabled anywhere
+
+**ADL note:** Auth.js manages user lifecycle instead of Supabase Auth. Migration 005 removes the `auth.users` FK. RLS policies will be re-aligned in S2-02 using a Supabase JWT bridge.
+
+---
+
+### S1-02 — Crypto utilities (AES-GCM envelope, Argon2id, HMAC)
+**Status:** COMPLETED (2026-04-22)
+**Branch:** `feature/S1-02-crypto-utils-clean`
+**Summary:**
+- `packages/shared/src/crypto/envelope.ts`: AES-256-GCM encrypt/decrypt; IV = `randomBytes(12)` per call; all outputs base64url
+- `packages/shared/src/crypto/kms.ts`: `generateDek` (`randomBytes(32)`), `wrapDek`/`unwrapDek` via `SUPABASE_VAULT_SECRET` env var only
+- `packages/shared/src/crypto/hash.ts`: `hashPassword`/`verifyPassword` Argon2id with memoryCost=65536, timeCost=3, parallelism=4; double-hash guard
+- `packages/shared/src/crypto/hmac.ts`: `deterministicHmac` HMAC-SHA256 hex for DPI lookup columns
+- `packages/shared/src/crypto/index.ts`: barrel export
+- `.github/semgrep.yml`: custom rules blocking MD5, SHA1, bcrypt, PBKDF2, AES-ECB, static/zeroed IVs
+- 14 unit tests: all passing (round-trip, IV randomness, salt randomness, verify correct/wrong, determinism, double-hash guard, auth-tag tamper detection)
+
+**AC Checklist:**
+- [x] `envelope.ts` — encrypt/decrypt AES-256-GCM, IV randomBytes(12), base64url output
+- [x] `kms.ts` — generateDek, wrapDek, unwrapDek via env var only
+- [x] `hash.ts` — argon2id mandatory params, double-hashing guard
+- [x] `hmac.ts` — HMAC-SHA256 hex deterministic
+- [x] `crypto/index.ts` — barrel export
+- [x] `.github/semgrep.yml` — rules blocking forbidden algorithms
+- [x] All 14 unit tests passing
+
+**Security Constraints:**
+- [x] Argon2id params: memoryCost=65536, timeCost=3, parallelism=4
+- [x] IV: randomBytes(12) per call — never static
+- [x] DEK: randomBytes(32) — never derived from password
+- [x] No plaintext keys in source — all from process.env
+- [x] Forbidden algorithms blocked by semgrep rule
+
+---
 
 ### S1-01 — Initialize Secure Repository & CI/CD
 **Status:** COMPLETED (2026-04-22)
