@@ -25,17 +25,17 @@
 > S1-03 (audit log hash-chain writer) deferred — audit_log table schema in place (migration 002); hash-chain writer moved to S2 tech debt.
 
 ## Active User Story
-**ID:** S2-04
-**Title:** Step-up auth with secondary password
+**ID:** S2-05
+**Title:** Admin WebAuthn (passkeys) + TOTP fallback + IP allowlist
 **Assigned Model:** Sonnet 4.6
 **Status:** NOT_STARTED
-**Branch:** `feature/S2-04-step-up-auth` (to be cut from `dev`)
-**Blockers:** none (secondary_password_hash in place from S2-03)
+**Branch:** `feature/S2-05-admin-webauthn` (to be cut from `dev`)
+**Blockers:** none
 
 ### Contextual Continuity
-1. Read this file. Confirm Active Story = S2-04.
-2. Branch from `dev`: `git checkout -b feature/S2-04-step-up-auth`
-3. Work within `apps/portal/` (step-up verification endpoint, session JWT update).
+1. Read this file. Confirm Active Story = S2-05.
+2. Branch from `dev`: `git checkout -b feature/S2-05-admin-webauthn`
+3. Work within `apps/portal/` (WebAuthn registration/assertion, TOTP fallback, IP allowlist middleware).
 4. On completion: PR to `dev` with AC + Security Constraint checklists ticked. Update this file.
 
 ---
@@ -58,7 +58,7 @@
 - [x] S2-01  Auth.js + Google OAuth + Supabase session bridge              [Sonnet 4.6]
 - [x] S2-02  Session middleware + RBAC + RLS policies                      [Sonnet 4.6]
 - [x] S2-03  DPI profile completion + consent capture                      [Sonnet 4.6]
-- [ ] S2-04  Step-up auth with secondary password                          [Sonnet 4.6]
+- [x] S2-04  Step-up auth with secondary password                          [Sonnet 4.6]
 - [ ] S2-05  Admin WebAuthn (passkeys) + TOTP fallback + IP allowlist      [Sonnet 4.6]
 
 ### Epic E3 — Service Catalog & Request Lifecycle
@@ -116,6 +116,36 @@
 ---
 
 ## Completed
+
+### S2-04 — Step-up auth with secondary password
+**Status:** COMPLETED (2026-04-24)
+**Branch:** `feature/S2-04-step-up-auth`
+**Summary:**
+- `supabase/migrations/008_step_up_tracking.sql`: creates `audit_log` table (INSERT-only RLS, revokes UPDATE/DELETE/TRUNCATE); adds `failed_step_up_attempts` (INT, default 0) and `step_up_locked_until` (TIMESTAMPTZ) to `user_profiles` — lockout state survives session refresh by living in DB, not JWT
+- `apps/portal/app/api/auth/step-up/route.ts`: POST handler; Zod validation (`{ secondaryPassword: string }`); per-user HTTP rate limit (10 req/user/15 min, in-memory); loads `secondary_password_hash` + lockout state from `user_profiles`; checks `step_up_locked_until > now` → 423; `verifyPassword` (Argon2id constant-time); on success: resets counters, returns `{ ok: true, stepUpVerifiedAt }` 200; on failure: increments `failed_step_up_attempts`, locks for 15 min on attempt ≥ 5; writes `AuditAction.AuthStepUp` or `AuditAction.AuthFailedAttempt` via `writeAuditEntry` on every path
+- `apps/portal/app/step-up/page.tsx`: modal-style client page; posts to `/api/auth/step-up`; on 200 calls NextAuth `update({ stepUpVerifiedAt })` to refresh JWT; shows remaining attempts and lockout messages; redirects to `callbackUrl` on success
+- `apps/portal/auth.ts`: `jwt` callback handles `trigger: 'update'` to persist `stepUpVerifiedAt` into the signed JWT cookie
+- `apps/portal/lib/auth/stepUp.ts`: unchanged — already reads `stepUpVerifiedAt` from session JWT and enforces the 15-minute window (implemented in S2-02)
+- `apps/portal/lib/errors/index.ts`: added `AUTH_STEP_UP_LOCKED` to `ErrorCode` union
+- `apps/portal/middleware.ts`: added `/step-up` to `AUTH_REQUIRED`; exempts `/step-up` from the profile-incomplete redirect (profile is already complete when step-up runs)
+- `packages/shared/src/audit/`: cherry-picked audit module from S1-03 commit — `logger.ts`, `types.ts`, `index.ts`, `__tests__/`; `packages/shared/src/index.ts` re-exports from `./audit/index.js`
+- 5 new unit tests (57 total passing): correct password → 200 + `stepUpVerifiedAt`; wrong password → 401 + counter incremented; 5th wrong attempt → lockout timestamp written; 14 min ago → `requireStepUp()` passes; 16 min ago → `requireStepUp()` blocks
+
+**AC Checklist:**
+- [x] `POST /api/auth/step-up`: Zod validation; loads `secondary_password_hash`; `verifyPassword` (Argon2id); on success sets `stepUpVerifiedAt` in session JWT; on failure 401 + attempt counter; 5 failures → 15-min lockout + audit log
+- [x] `/step-up` page: modal-style form; shown when `requireStepUp()` returns 403; calls `update()` to refresh JWT on success
+- [x] `apps/portal/lib/auth/stepUp.ts` reads `step_up_verified_at` from session JWT (15-min window)
+- [x] Audit log on every attempt (success and failure): `auth.step_up` / `auth.failed_attempt`
+- [x] Unit tests: 5/5 AC cases passing
+
+**Security Constraints:**
+- [x] `verifyPassword` uses Argon2 library (constant-time) — no `===` comparison
+- [x] Failed attempts counter in DB (`user_profiles.failed_step_up_attempts`) — never in client cookie/header
+- [x] Lockout state in DB (`step_up_locked_until`) — survives session refresh
+- [x] HTTP rate limit: 10 req/user/15 min (in-memory, server-side)
+- [x] Audit on every attempt: `AuditAction.AuthStepUp` (success) and `AuditAction.AuthFailedAttempt` (failure/locked)
+
+---
 
 ### S2-03 — DPI profile completion + consent capture
 **Status:** COMPLETED (2026-04-23)

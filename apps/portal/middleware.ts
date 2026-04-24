@@ -5,7 +5,7 @@ import { NextResponse } from 'next/server';
 // These correspond to the (client) and (admin) App Router route groups.
 const CLIENT_PREFIXES = ['/dashboard', '/requests', '/documents', '/profile'];
 const ADMIN_PREFIXES = ['/admin'];
-const AUTH_REQUIRED = [...CLIENT_PREFIXES, ...ADMIN_PREFIXES, '/onboarding'];
+const AUTH_REQUIRED = [...CLIENT_PREFIXES, ...ADMIN_PREFIXES, '/onboarding', '/step-up'];
 
 function isProtected(pathname: string): boolean {
   return AUTH_REQUIRED.some(
@@ -56,7 +56,8 @@ export default auth((req) => {
     session &&
     !session.user.profileComplete &&
     isProtected(pathname) &&
-    pathname !== '/onboarding'
+    pathname !== '/onboarding' &&
+    pathname !== '/step-up'
   ) {
     return NextResponse.redirect(new URL('/onboarding', origin));
   }

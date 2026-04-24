@@ -68,7 +68,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return true;
     },
 
-    async jwt({ token, account }) {
+    async jwt({ token, account, trigger, session }) {
+      // Handle client-side session updates (e.g., step-up sets stepUpVerifiedAt).
+      // The value arrives via update() → PATCH /api/auth/session → this callback.
+      if (trigger === 'update' && typeof session?.stepUpVerifiedAt === 'number') {
+        token.stepUpVerifiedAt = session.stepUpVerifiedAt;
+        return token;
+      }
+
       // Only run heavy DB queries on first sign-in (account is set)
       if (account?.provider === 'google') {
         const supabase = getSupabaseAdmin();
