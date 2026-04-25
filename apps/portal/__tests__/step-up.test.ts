@@ -111,7 +111,7 @@ describe('POST /api/auth/step-up — route handler', () => {
       failed_step_up_attempts: 0,
       step_up_locked_until: null,
     });
-    mockCreateClient.mockReturnValue(supabase as ReturnType<typeof createClient>);
+    mockCreateClient.mockReturnValue(supabase as unknown as ReturnType<typeof createClient>);
     mockVerifyPassword.mockResolvedValue(true);
 
     const before = Math.floor(Date.now() / 1000);
@@ -138,7 +138,7 @@ describe('POST /api/auth/step-up — route handler', () => {
       failed_step_up_attempts: 1,
       step_up_locked_until: null,
     });
-    mockCreateClient.mockReturnValue(supabase as ReturnType<typeof createClient>);
+    mockCreateClient.mockReturnValue(supabase as unknown as ReturnType<typeof createClient>);
     mockVerifyPassword.mockResolvedValue(false);
 
     const res = await POST(makeRequest({ secondaryPassword: 'WrongPass!' }));
@@ -162,7 +162,7 @@ describe('POST /api/auth/step-up — route handler', () => {
       failed_step_up_attempts: 4, // one more failure → triggers lockout
       step_up_locked_until: null,
     });
-    mockCreateClient.mockReturnValue(supabase as ReturnType<typeof createClient>);
+    mockCreateClient.mockReturnValue(supabase as unknown as ReturnType<typeof createClient>);
     mockVerifyPassword.mockResolvedValue(false);
 
     const before = Date.now();

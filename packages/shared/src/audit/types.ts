@@ -19,6 +19,11 @@ export enum AuditAction {
   PaymentFailed = 'payment.failed',
 
   AdminLogin = 'admin.login',
+  AdminLoginFailed = 'admin.login_failed',
+  AdminMfaVerified = 'admin.mfa_verified',
+  AdminMfaFailed = 'admin.mfa_failed',
+  AdminPasskeyEnrolled = 'admin.passkey_enrolled',
+  AdminTotpVerified = 'admin.totp_verified',
   AdminTransferApprove = 'admin.transfer_approve',
   AdminTransferReject = 'admin.transfer_reject',
   AdminViewRequest = 'admin.view_request',

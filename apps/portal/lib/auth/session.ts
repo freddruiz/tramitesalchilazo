@@ -6,8 +6,9 @@ export interface AppSession {
   userId: string;
   role: UserRole;
   profileComplete: boolean;
-  /** Unix timestamp (seconds) set by step-up auth (S2-04). */
   stepUpVerifiedAt?: number;
+  adminPasskeyEnrolled?: boolean;
+  adminMfaVerifiedAt?: number;
 }
 
 /**
@@ -25,5 +26,7 @@ export async function getSession(): Promise<AppSession | null> {
     role: (raw.user.role as UserRole) ?? 'client',
     profileComplete: raw.user.profileComplete ?? false,
     stepUpVerifiedAt: raw.user.stepUpVerifiedAt,
+    adminPasskeyEnrolled: raw.user.adminPasskeyEnrolled,
+    adminMfaVerifiedAt: raw.user.adminMfaVerifiedAt,
   };
 }

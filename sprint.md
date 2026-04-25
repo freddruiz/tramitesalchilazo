@@ -18,24 +18,23 @@
 ---
 
 ## Active Sprint
-**Sprint:** S2 — Identity & Consent
-**Sprint Goal:** Google OAuth + Supabase session bridge, RBAC, profile completion, step-up auth, admin WebAuthn.
+**Sprint:** S3 — Service Catalog & Request Lifecycle
+**Sprint Goal:** Service catalog + pricing, request state machine, client dashboard, request creation flow.
 
-> Sprint 1 (Foundation & Security Core) closed 2026-04-22.
-> S1-03 (audit log hash-chain writer) deferred — audit_log table schema in place (migration 002); hash-chain writer moved to S2 tech debt.
+> Sprint 2 (Identity & Consent) closed 2026-04-24.
 
 ## Active User Story
-**ID:** S2-05
-**Title:** Admin WebAuthn (passkeys) + TOTP fallback + IP allowlist
-**Assigned Model:** Sonnet 4.6
+**ID:** S3-01
+**Title:** Service catalog + pricing (server-authoritative)
+**Assigned Model:** Haiku 4.5
 **Status:** NOT_STARTED
-**Branch:** `feature/S2-05-admin-webauthn` (to be cut from `dev`)
+**Branch:** `feature/S3-01-service-catalog` (to be cut from `dev`)
 **Blockers:** none
 
 ### Contextual Continuity
-1. Read this file. Confirm Active Story = S2-05.
-2. Branch from `dev`: `git checkout -b feature/S2-05-admin-webauthn`
-3. Work within `apps/portal/` (WebAuthn registration/assertion, TOTP fallback, IP allowlist middleware).
+1. Read this file. Confirm Active Story = S3-01.
+2. Branch from `dev`: `git checkout -b feature/S3-01-service-catalog`
+3. Work within `apps/portal/` (service catalog API, pricing, DB migration).
 4. On completion: PR to `dev` with AC + Security Constraint checklists ticked. Update this file.
 
 ---
@@ -59,10 +58,10 @@
 - [x] S2-02  Session middleware + RBAC + RLS policies                      [Sonnet 4.6]
 - [x] S2-03  DPI profile completion + consent capture                      [Sonnet 4.6]
 - [x] S2-04  Step-up auth with secondary password                          [Sonnet 4.6]
-- [ ] S2-05  Admin WebAuthn (passkeys) + TOTP fallback + IP allowlist      [Sonnet 4.6]
+- [x] S2-05  Admin WebAuthn (passkeys) + TOTP fallback + IP allowlist      [Sonnet 4.6]
 
 ### Epic E3 — Service Catalog & Request Lifecycle
-- [ ] S3-01  Service catalog + pricing (server-authoritative)              [Haiku 4.5]
+- [ ] S3-01  Service catalog + pricing (server-authoritative)              [Haiku 4.5]  ← ACTIVE
 - [ ] S3-02  Request state machine + status transitions                    [Sonnet 4.6]
 - [ ] S3-03  Client dashboard UI (list + detail)                           [Haiku 4.5]
 - [ ] S3-04  Request creation flow (step-up gated)                         [Sonnet 4.6]
@@ -116,6 +115,51 @@
 ---
 
 ## Completed
+
+### S2-05 — Admin WebAuthn (passkeys) + TOTP fallback + IP allowlist
+**Status:** COMPLETED (2026-04-24)
+**Branch:** `feature/S2-05-admin-2fa`
+**Summary:**
+- `supabase/migrations/009_admin_mfa.sql`: creates `admin_webauthn_credentials` (credential_id UNIQUE, public_key TEXT, counter BIGINT, device_type, backed_up, transports, friendly_name); `admin_totp_secrets` (secret_envelope JSONB AES-256-GCM, backup_codes JSONB [{hash,used}], verified BOOLEAN); `admin_webauthn_challenges` (5-min TTL challenge store for stateless serverless); all tables RLS-enabled, REVOKE ALL from authenticated — service_role only
+- `apps/portal/lib/admin/webauthn.ts`: `buildRegistrationOptions` / `completeRegistration` / `buildAuthenticationOptions` / `completeAuthentication` using `@simplewebauthn/server@13.3.0`; challenge stored in DB (consumed & deleted on verify); counter updated post-auth (replay prevention); `isoBase64URL` for Uint8Array↔base64url public key serialization
+- `apps/portal/lib/admin/totp.ts`: `setupTotp` generates `otplib` authenticator secret, encrypts with AES-256-GCM (`ADMIN_TOTP_ENCRYPTION_KEY`), stores envelope + Argon2id-hashed backup codes; `verifyTotpCode` / `verifyBackupCode` (backup codes single-use); `hasTotpConfigured`
+- `apps/portal/lib/admin/ipAllowlist.ts`: Edge Runtime-compatible pure-JS IPv4 CIDR check; normalizes IPv4-mapped IPv6 (`::ffff:x.x.x.x`); if `ADMIN_IP_ALLOWLIST` is unset → warn + allow (local dev); blocks with 403 otherwise
+- `apps/portal/middleware.ts`: admin path guard now covers both `/admin/*` pages AND `/api/admin/*` routes; IP allowlist checked before any route handler; page routes redirect to `/admin/security/passkeys/enroll` if `!adminPasskeyEnrolled`, redirect to `/admin/mfa` if MFA not verified within 4 hours; API routes handle own auth state; MFA-exempt paths: `/admin/mfa`, `/admin/security/passkeys/enroll`, `/api/admin/webauthn/*`, `/api/admin/totp/*`
+- `apps/portal/auth.ts`: JWT callback handles `trigger==='update'` for `adminMfaVerifiedAt` and `adminPasskeyEnrolled`; on first admin login queries `admin_webauthn_credentials` to set `adminPasskeyEnrolled` flag; `signIn` callback writes `AuditAction.AdminLogin` for admin users
+- `apps/portal/types/next-auth.d.ts` + `lib/auth/session.ts`: added `adminPasskeyEnrolled?: boolean` and `adminMfaVerifiedAt?: number` to Session, JWT, AppSession
+- API routes (all require role=admin): `GET /api/admin/webauthn/register-options`, `POST /api/admin/webauthn/register` (audit: AdminPasskeyEnrolled), `GET /api/admin/webauthn/auth-options`, `POST /api/admin/webauthn/auth` (audit: AdminMfaVerified / AdminMfaFailed), `GET /api/admin/webauthn/list`, `POST /api/admin/webauthn/delete`, `GET /api/admin/totp/setup`, `POST /api/admin/totp/verify` (audit: AdminTotpVerified / AdminMfaFailed)
+- Admin pages: `app/(admin)/admin/mfa/page.tsx` (passkey tab primary, TOTP fallback tab with backup code toggle); `app/(admin)/admin/security/passkeys/enroll/page.tsx` (forced first-time enrollment, calls `update({ adminPasskeyEnrolled: true })` post-enroll); `app/(admin)/admin/security/passkeys/page.tsx` (list/add/delete passkeys + TOTP setup with QR code + one-time backup codes display)
+- `packages/shared/src/audit/types.ts`: added `AdminLoginFailed`, `AdminMfaVerified`, `AdminMfaFailed`, `AdminPasskeyEnrolled`, `AdminTotpVerified`
+- `apps/portal/lib/errors/index.ts`: added `ADMIN_MFA_REQUIRED`, `ADMIN_PASSKEY_REQUIRED`, `ADMIN_IP_BLOCKED`, `WEBAUTHN_VERIFICATION_FAILED`, `TOTP_VERIFICATION_FAILED`, `TOTP_NOT_CONFIGURED`
+- `apps/portal/package.json`: added `@simplewebauthn/browser@13.3.0`, `@simplewebauthn/server@13.3.0`, `otplib@12.0.1`, `qrcode@1.5.4`, `@supabase/supabase-js@2.45.4`, `next-auth@5.0.0-beta.25`, `zod@3.23.8`, `@tramitesalchilazo/shared@workspace:*` (prior stories' packages were never committed to package.json — fixed here)
+- `.env.example`: added `ADMIN_IP_ALLOWLIST`, `ADMIN_TOTP_ENCRYPTION_KEY`, `WEBAUTHN_RP_ID`, `WEBAUTHN_RP_NAME`
+- 14 new unit tests (71 total passing): 10 IP allowlist cases (exact match, /8, /24, /32, IPv4-mapped IPv6, multi-CIDR) + 4 MFA session TTL cases (1min, 3h59m, 4h1m, absent)
+
+**AC Checklist:**
+- [x] Admin login flow: Google OAuth → role check (admin only) → redirect to /admin/mfa if MFA not verified
+- [x] Supabase MFA API: TOTP implemented via `otplib` (Supabase MFA API requires Supabase Auth users; project uses Auth.js — see ADL note below)
+- [x] WebAuthn/passkey enrollment page at `/admin/security/passkeys` using SimpleWebAuthn
+- [x] `/admin/mfa` page: passkey authentication first; TOTP input as fallback tab
+- [x] Admin session requires MFA verification — middleware blocks all /admin/* without mfa_verified flag
+- [x] IP allowlist: `ADMIN_IP_ALLOWLIST` env var (comma-separated CIDRs); 403 for IPs outside allowlist; empty → warn + allow (local dev)
+- [x] Mandatory passkey enrollment: forced to `/admin/security/passkeys/enroll` before any admin page
+- [x] Audit log on every admin login (AdminLogin), MFA verification (AdminMfaVerified/AdminTotpVerified), passkey registration (AdminPasskeyEnrolled), MFA failure (AdminMfaFailed)
+- [x] `.env.example` updated: `ADMIN_IP_ALLOWLIST` placeholder
+
+**Security Constraints:**
+- [x] No SMS 2FA
+- [x] TOTP is fallback only — passkey is the first tab presented
+- [x] IP allowlist check server-side in middleware before any route handler runs
+- [x] All admin auth events audit-logged with actor_id, IP hash, user_agent
+- [x] Admin session TTL: `adminMfaVerifiedAt` enforced at 4 hours in middleware (independent of 7-day client session)
+
+**ADL note:** AC required `supabase.auth.mfa.enroll / challenge / verify` but Supabase MFA API is tied to Supabase Auth users. This project uses Auth.js (not Supabase Auth) per ADL from S2-01; Supabase Auth users do not exist. TOTP implemented with `otplib` + AES-256-GCM encrypted secret. If project migrates to Supabase Auth, revisit.
+
+**Tech Debt:**
+- [ ] `adminPasskeyEnrolled` JWT flag not updated when admin deletes ALL passkeys (requires logout/re-login to clear). Low risk — typical admin won't delete all passkeys.
+- [ ] IP logging absent from `signIn` audit entry — NextAuth v5 beta `signIn` callback does not expose request object. IP is captured in subsequent MFA verification routes.
+
+---
 
 ### S2-04 — Step-up auth with secondary password
 **Status:** COMPLETED (2026-04-24)

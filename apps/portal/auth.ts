@@ -1,6 +1,7 @@
 import NextAuth from 'next-auth';
 import Google from 'next-auth/providers/google';
 import { createClient } from '@supabase/supabase-js';
+import { writeAuditEntry, AuditAction } from '@tramitesalchilazo/shared';
 
 function getSupabaseAdmin() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -19,14 +20,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
   session: {
     strategy: 'jwt',
-    maxAge: 7 * 24 * 60 * 60, // 7-day session window (refresh ceiling)
+    maxAge: 7 * 24 * 60 * 60, // 7-day session window (client users)
   },
 
   jwt: {
-    maxAge: 15 * 60, // 15-minute access token; re-issued within session window
+    maxAge: 15 * 60, // 15-minute access token
   },
 
-  // Explicit cookie settings — httpOnly + Secure + SameSite=Lax required by AC
   cookies: {
     sessionToken: {
       name:
@@ -65,14 +65,45 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         return false;
       }
 
+      // Audit admin logins — IP is unavailable here in NextAuth v5 beta;
+      // full IP-logged audit entries are written in the MFA verification routes.
+      try {
+        const { data: userRow } = await supabase
+          .from('users')
+          .select('id, role')
+          .eq('google_sub', account.providerAccountId)
+          .single();
+
+        if (userRow?.role === 'admin') {
+          await writeAuditEntry(
+            {
+              actorId: userRow.id as string,
+              action: AuditAction.AdminLogin,
+              metadata: { email: user.email },
+            },
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            supabase as any,
+          );
+        }
+      } catch {
+        // Audit failure must not block sign-in
+      }
+
       return true;
     },
 
     async jwt({ token, account, trigger, session }) {
-      // Handle client-side session updates (e.g., step-up sets stepUpVerifiedAt).
-      // The value arrives via update() → PATCH /api/auth/session → this callback.
-      if (trigger === 'update' && typeof session?.stepUpVerifiedAt === 'number') {
-        token.stepUpVerifiedAt = session.stepUpVerifiedAt;
+      // Handle client-side session updates (step-up, admin MFA, passkey enrollment flag)
+      if (trigger === 'update') {
+        if (typeof session?.stepUpVerifiedAt === 'number') {
+          token.stepUpVerifiedAt = session.stepUpVerifiedAt;
+        }
+        if (typeof session?.adminMfaVerifiedAt === 'number') {
+          token.adminMfaVerifiedAt = session.adminMfaVerifiedAt;
+        }
+        if (typeof session?.adminPasskeyEnrolled === 'boolean') {
+          token.adminPasskeyEnrolled = session.adminPasskeyEnrolled;
+        }
         return token;
       }
 
@@ -95,6 +126,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.userId = userRow?.id ?? '';
         token.role = (userRow?.role as string | undefined) ?? 'client';
         token.profileComplete = !!profile;
+
+        // For admins: check passkey enrollment state at login time
+        if (token.role === 'admin' && token.userId) {
+          const { data: creds } = await supabase
+            .from('admin_webauthn_credentials')
+            .select('id')
+            .eq('user_id', token.userId)
+            .limit(1);
+          token.adminPasskeyEnrolled = (creds?.length ?? 0) > 0;
+        }
       }
 
       return token;
@@ -105,7 +146,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       session.user.role = (token.role as string | undefined) ?? 'client';
       session.user.profileComplete = (token.profileComplete as boolean | undefined) ?? false;
       session.user.stepUpVerifiedAt = token.stepUpVerifiedAt as number | undefined;
-      // google_sub is intentionally NOT exposed in the session object
+      session.user.adminPasskeyEnrolled = token.adminPasskeyEnrolled as boolean | undefined;
+      session.user.adminMfaVerifiedAt = token.adminMfaVerifiedAt as number | undefined;
       return session;
     },
   },

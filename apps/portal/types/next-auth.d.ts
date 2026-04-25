@@ -6,8 +6,11 @@ declare module 'next-auth' {
       id: string;
       role: string;
       profileComplete: boolean;
-      /** Unix timestamp (seconds) when step-up auth was last verified. Set in S2-04. */
       stepUpVerifiedAt?: number;
+      /** True once the admin has enrolled at least one passkey. */
+      adminPasskeyEnrolled?: boolean;
+      /** Unix timestamp (seconds) when admin completed MFA verification (4-hour window). */
+      adminMfaVerifiedAt?: number;
     } & DefaultSession['user'];
   }
 }
@@ -18,5 +21,7 @@ declare module 'next-auth/jwt' {
     role?: string;
     profileComplete?: boolean;
     stepUpVerifiedAt?: number;
+    adminPasskeyEnrolled?: boolean;
+    adminMfaVerifiedAt?: number;
   }
 }
