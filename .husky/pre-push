@@ -1,0 +1,12 @@
+#!/bin/sh
+. "$(dirname "$0")/_/husky.sh"
+
+# Prevent accidental pushes to main or prod
+branch=$(git rev-parse --abbrev-ref HEAD)
+
+if [ "$branch" = "main" ] || [ "$branch" = "prod" ]; then
+  echo "Error: Direct push to $branch is blocked. Use a feature branch and PR instead."
+  exit 1
+fi
+
+exit 0
