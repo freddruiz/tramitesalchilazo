@@ -12,7 +12,8 @@ export type ErrorCode =
   | 'PROFILE_VALIDATION'
   | 'PROFILE_DUPLICATE_DPI'
   | 'PROFILE_ALREADY_COMPLETE'
-  | 'RATE_LIMIT_EXCEEDED';
+  | 'RATE_LIMIT_EXCEEDED'
+  | 'REQUEST_INVALID_TRANSITION';
 
 export class AppError extends Error {
   readonly code: ErrorCode;

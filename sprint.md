@@ -58,11 +58,11 @@
 | Story | Title | Status |
 |-------|-------|--------|
 | S3-01 | Service catalog + pricing (server-authoritative) | ✅ Done |
-| S3-02 | Request state machine + status transitions | **🟡 Active** |
-| S3-03 | Client dashboard UI | ⬜ Planned |
+| S3-02 | Request state machine + status transitions | ✅ Done |
+| S3-03 | Client dashboard UI | **🟡 Active** |
 | S3-04 | Request creation flow (step-up gated) | ⬜ Planned |
 
-### Active Story: S3-02
+### Active Story: S3-03
 
 ---
 
