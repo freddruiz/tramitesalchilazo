@@ -55,3 +55,4 @@ supabase/.temp/
 .turbo/
 .vercel/
 .cache/
+.husky/_/
