@@ -1,7 +1,10 @@
 import { getSession } from '@/lib/auth/session';
+import { requireStepUp } from '@/lib/auth/stepUp';
 import { supabaseAdmin } from '@/lib/supabase/admin';
-import { getServicePrice, getServiceById } from '@/lib/catalog/services';
-import { AppError } from '@/lib/errors';
+import { SERVICE_CATALOG, getServiceById } from '@/lib/catalog/services';
+import type { ServiceId } from '@/lib/catalog/services';
+import { extractClientIp } from '@/lib/admin/ipAllowlist';
+import { writeAuditEntry, AuditAction } from '@tramitesalchilazo/shared';
 
 export async function GET(request: Request) {
   try {
@@ -59,44 +62,78 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as {
-      serviceId?: string;
-      clientSubmittedPrice?: number;
-    };
-    const { serviceId, clientSubmittedPrice } = body;
+    const session = await requireStepUp()();
+
+    const body = (await request.json()) as { serviceId?: string };
+    const { serviceId } = body;
 
     if (!serviceId || typeof serviceId !== 'string') {
-      throw new AppError(
-        'PROFILE_VALIDATION',
-        400,
-        'serviceId is required'
-      );
+      return Response.json({ error: 'serviceId is required' }, { status: 400 });
     }
 
-    const serverPrice = getServicePrice(serviceId as any);
-
-    if (serverPrice === null) {
-      throw new AppError(
-        'PROFILE_VALIDATION',
-        404,
-        'Service not available'
-      );
+    const service = SERVICE_CATALOG[serviceId as ServiceId];
+    if (!service || !service.available) {
+      return Response.json({ error: 'Not found' }, { status: 404 });
     }
+
+    // Idempotency: return existing request if same user + service is pending_payment or queued
+    const { data: existing } = await supabaseAdmin
+      .from('service_requests')
+      .select('id, price_gtq')
+      .eq('user_id', session.userId)
+      .eq('service_id', serviceId)
+      .in('status', ['pending_payment', 'queued'])
+      .maybeSingle();
+
+    if (existing) {
+      return Response.json({
+        requestId: existing.id,
+        paymentAmount: existing.price_gtq,
+      });
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('service_requests')
+      .insert({
+        user_id: session.userId,
+        service_id: serviceId,
+        status: 'pending_payment',
+        price_gtq: service.priceGTQ,
+      })
+      .select('id, price_gtq')
+      .single();
+
+    if (error || !data) {
+      console.error('POST /api/requests insert error:', error);
+      return Response.json({ error: 'Failed to create request' }, { status: 500 });
+    }
+
+    await writeAuditEntry(
+      {
+        actorId: session.userId,
+        action: AuditAction.RequestCreate,
+        resourceType: 'service_request',
+        resourceId: data.id,
+        ipRaw: extractClientIp(request.headers),
+        metadata: { serviceId, priceGtq: data.price_gtq },
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      supabaseAdmin as any,
+    );
 
     return Response.json({
-      requestId: 'placeholder',
-      serviceId,
-      serverPrice,
-      clientSubmittedPrice,
-      priceUsed: serverPrice,
+      requestId: data.id,
+      paymentAmount: data.price_gtq,
     });
-  } catch (error) {
-    if (error instanceof AppError) {
+  } catch (err) {
+    if (err && typeof err === 'object' && 'statusCode' in err && 'code' in err) {
+      const e = err as { code: string; statusCode: number; message?: string };
       return Response.json(
-        { code: error.code, message: error.message },
-        { status: error.statusCode }
+        { code: e.code, message: e.message ?? 'Error' },
+        { status: e.statusCode }
       );
     }
+    console.error('POST /api/requests error:', err);
     return Response.json(
       { code: 'INTERNAL_ERROR', message: 'Internal server error' },
       { status: 500 }

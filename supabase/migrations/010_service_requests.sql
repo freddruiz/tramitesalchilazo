@@ -16,9 +16,10 @@ CREATE TABLE IF NOT EXISTS service_requests (
   service_id    TEXT NOT NULL,
   status        request_status NOT NULL DEFAULT 'pending_payment',
   price_gtq     NUMERIC(10, 2) NOT NULL CHECK (price_gtq > 0),
-  metadata      JSONB,
-  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  metadata               JSONB,
+  created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  retention_expires_at   TIMESTAMPTZ
 );
 
 -- Only valid status transitions are enforced at the application layer (requestStateMachine.ts).

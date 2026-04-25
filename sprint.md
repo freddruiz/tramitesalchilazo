@@ -53,24 +53,24 @@
 
 ---
 
-## Sprint 3 — Request Creation 🔄
+## Sprint 3 — Request Creation ✅
 
 | Story | Title | Status |
 |-------|-------|--------|
 | S3-01 | Service catalog + pricing (server-authoritative) | ✅ Done |
 | S3-02 | Request state machine + status transitions | ✅ Done |
 | S3-03 | Client dashboard UI | ✅ Done |
-| S3-04 | Request creation flow (step-up gated) | **🟡 Active** |
-
-### Active Story: S3-04
+| S3-04 | Request creation flow (step-up gated) | ✅ Done |
 
 ---
 
-## Sprint 4 — Payments
+## Sprint 4 — Payments 🔄
+
+### Active Story: S4-01
 
 | Story | Title | Status |
 |-------|-------|--------|
-| S4-01 | IPaymentProvider abstraction + event types | ⬜ Planned |
+| S4-01 | IPaymentProvider abstraction + event types | **🟡 Active** |
 | S4-02 | Recurrente adapter | ⬜ Planned |
 | S4-03 | NeoNet adapter | ⬜ Planned |
 | S4-04 | Visanet adapter | ⬜ Planned |
