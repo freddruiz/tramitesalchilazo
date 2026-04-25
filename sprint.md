@@ -22,18 +22,18 @@
 **Sprint Goal:** Secure repo scaffold, CI/CD gates, crypto primitives, audit log.
 
 ## Active User Story
-**ID:** S1-02
-**Title:** Crypto utilities (AES-GCM envelope, Argon2id, HMAC)
+**ID:** S4-02
+**Title:** Recurrente adapter
 **Assigned Model:** Claude Sonnet 4.6
 **Status:** NOT_STARTED
-**Branch:** `feature/S1-02-crypto-utils` (to be cut from `dev`)
-**Blockers:** none (depends on S1-01 scaffold)
+**Branch:** `feature/S4-02-recurrente-adapter` (to be cut from `dev`)
+**Blockers:** none (depends on S4-01 IPaymentProvider abstraction)
 
 ### Contextual Continuity
-1. Read this file. Confirm Active Story = S1-01.
-2. Branch from `dev`: `git checkout -b feature/S1-01-repo-scaffold`
-3. Work only within repo root + `/apps/portal`, `/apps/worker` stubs, `/packages/shared` stubs, `/.github/`.
-4. On completion: PR to `dev` with AC + Security Constraint checklists ticked. Update this file (move S1-01 to Completed, promote S1-02 to Active).
+1. Read this file. Confirm Active Story = S4-02.
+2. Branch from `dev`: `git checkout -b feature/S4-02-recurrente-adapter`
+3. Work only within `apps/portal/lib/payments/` and related test files.
+4. On completion: PR to `dev` with AC + Security Constraint checklists ticked. Update this file (move S4-02 to Completed, promote S4-03 to Active).
 
 ---
 
@@ -46,7 +46,7 @@
 
 ### Epic E1 — Foundation & Security Core
 - [x] S1-01  Initialize Secure Repository & CI/CD                          [Haiku 4.5]
-- [ ] S1-02  Crypto utilities (AES-GCM envelope, Argon2id, HMAC)           [Sonnet 4.6]
+- [x] S1-02  Crypto utilities (AES-GCM envelope, Argon2id, HMAC)           [Sonnet 4.6]
 - [ ] S1-03  Append-only audit log with hash chain                         [Sonnet 4.6]
 - [ ] S1-04  Zod schema conventions + error taxonomy                       [Haiku 4.5]
 - [ ] S1-05  Supabase project bootstrap + migrations baseline              [Sonnet 4.6]
@@ -65,7 +65,7 @@
 - [ ] S3-04  Request creation flow (step-up gated)                         [Sonnet 4.6]
 
 ### Epic E4 — Payment Orchestration
-- [ ] S4-01  `IPaymentProvider` abstraction + normalized event shape       [Sonnet 4.6]
+- [x] S4-01  `IPaymentProvider` abstraction + normalized event shape       [Sonnet 4.6]
 - [ ] S4-02  Recurrente adapter                                            [Sonnet 4.6]
 - [ ] S4-03  NeoNet adapter                                                [Sonnet 4.6]
 - [ ] S4-04  Visanet adapter                                               [Sonnet 4.6]
@@ -113,6 +113,64 @@
 ---
 
 ## Completed
+
+### S4-01 — IPaymentProvider abstraction + normalized event shape
+**Status:** COMPLETED (2026-04-25)
+**Branch:** `feature/S4-01-payment-provider-abstraction`
+**Summary:**
+- `packages/shared/src/payments/types.ts`: `PaymentMethodEnum`, `PaymentIntentParams`, `PaymentIntentResult`, `VerifiedWebhookPayload` (opaque branded type), `NormalizedPaymentEvent`
+- `packages/shared/src/payments/IPaymentProvider.ts`: `IPaymentProvider` interface with `createPaymentIntent`, `verifyWebhookSignature` (returns `VerifiedWebhookPayload | null`), `normalizeWebhookEvent` (only accepts `VerifiedWebhookPayload` — enforces verification order at compile time)
+- `packages/shared/src/payments/index.ts`: barrel export
+- `packages/shared/src/index.ts`: added `export * from './payments/index.js'`
+- `apps/portal/lib/payments/registry.ts`: `registerPaymentProvider` + `getPaymentProvider` (throws if unconfigured); `_resetRegistryForTests` for test isolation
+- `apps/portal/__tests__/payment-registry.test.ts`: 5 unit tests covering correct provider per method, throw on missing, overwrite, isolation
+- `supabase/migrations/011_payments.sql`: `payment_method` + `payment_status` enums, `payments` table with `idempotency_key UNIQUE`, RLS owner-select policy
+
+**AC Checklist:**
+- [x] `IPaymentProvider.ts` — interface with `createPaymentIntent`, `verifyWebhookSignature`, `normalizeWebhookEvent`
+- [x] Type design: `normalizeWebhookEvent` only accepts `VerifiedWebhookPayload` (enforces verification order)
+- [x] `types.ts` — `PaymentIntentParams`, `PaymentIntentResult`, `NormalizedPaymentEvent`
+- [x] `payments/index.ts` — barrel export
+- [x] `shared/src/index.ts` — payments re-exported
+- [x] `registry.ts` — `getPaymentProvider` throws if method not configured
+- [x] Unit test: registry returns correct provider class per method enum value
+- [x] `011_payments.sql` — payments table with all required columns
+
+**Security Constraints:**
+- [x] `amountCents` always from `SERVICE_CATALOG` server-side — never from request body
+- [x] `idempotencyKey` generated server-side via `crypto.randomUUID()`
+
+---
+
+### S1-02 — Crypto utilities (AES-GCM envelope, Argon2id, HMAC)
+**Status:** COMPLETED (2026-04-22)
+**Branch:** `feature/S1-02-crypto-utils-clean`
+**Summary:**
+- `packages/shared/src/crypto/envelope.ts`: AES-256-GCM encrypt/decrypt; IV = `randomBytes(12)` per call; all outputs base64url
+- `packages/shared/src/crypto/kms.ts`: `generateDek` (`randomBytes(32)`), `wrapDek`/`unwrapDek` via `SUPABASE_VAULT_SECRET` env var only
+- `packages/shared/src/crypto/hash.ts`: `hashPassword`/`verifyPassword` Argon2id with memoryCost=65536, timeCost=3, parallelism=4; double-hash guard
+- `packages/shared/src/crypto/hmac.ts`: `deterministicHmac` HMAC-SHA256 hex for DPI lookup columns
+- `packages/shared/src/crypto/index.ts`: barrel export
+- `.github/semgrep.yml`: custom rules blocking MD5, SHA1, bcrypt, PBKDF2, AES-ECB, static/zeroed IVs
+- 14 unit tests: all passing (round-trip, IV randomness, salt randomness, verify correct/wrong, determinism, double-hash guard, auth-tag tamper detection)
+
+**AC Checklist:**
+- [x] `envelope.ts` — encrypt/decrypt AES-256-GCM, IV randomBytes(12), base64url output
+- [x] `kms.ts` — generateDek, wrapDek, unwrapDek via env var only
+- [x] `hash.ts` — argon2id mandatory params, double-hashing guard
+- [x] `hmac.ts` — HMAC-SHA256 hex deterministic
+- [x] `crypto/index.ts` — barrel export
+- [x] `.github/semgrep.yml` — rules blocking forbidden algorithms
+- [x] All 14 unit tests passing
+
+**Security Constraints:**
+- [x] Argon2id params: memoryCost=65536, timeCost=3, parallelism=4
+- [x] IV: randomBytes(12) per call — never static
+- [x] DEK: randomBytes(32) — never derived from password
+- [x] No plaintext keys in source — all from process.env
+- [x] Forbidden algorithms blocked by semgrep rule
+
+---
 
 ### S1-01 — Initialize Secure Repository & CI/CD
 **Status:** COMPLETED (2026-04-22)
