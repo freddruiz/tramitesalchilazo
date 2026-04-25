@@ -1,5 +1,5 @@
 import type { IPaymentProvider } from '@tramitesalchilazo/shared';
-import { PaymentMethodEnum } from '@tramitesalchilazo/shared';
+import { PaymentMethodEnum, VisanetAdapter } from '@tramitesalchilazo/shared';
 
 const _registry = new Map<PaymentMethodEnum, IPaymentProvider>();
 
@@ -21,4 +21,13 @@ export function getPaymentProvider(method: PaymentMethodEnum): IPaymentProvider 
 // Exposed only for test isolation — do not call in application code.
 export function _resetRegistryForTests(): void {
   _registry.clear();
+}
+
+// Register adapters for configured providers at module load.
+// Each adapter is only registered when its required env vars are present.
+if (process.env.VISANET_API_KEY && process.env.VISANET_WEBHOOK_SECRET) {
+  _registry.set(
+    PaymentMethodEnum.Visanet,
+    new VisanetAdapter(process.env.VISANET_API_KEY, process.env.VISANET_WEBHOOK_SECRET),
+  );
 }

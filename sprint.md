@@ -22,18 +22,18 @@
 **Sprint Goal:** Secure repo scaffold, CI/CD gates, crypto primitives, audit log.
 
 ## Active User Story
-**ID:** S4-02
-**Title:** Recurrente adapter
+**ID:** S4-03
+**Title:** NeoNet adapter
 **Assigned Model:** Claude Sonnet 4.6
 **Status:** NOT_STARTED
-**Branch:** `feature/S4-02-recurrente-adapter` (to be cut from `dev`)
+**Branch:** `feature/S4-03-neonet-adapter` (to be cut from `dev` or S4-02 branch)
 **Blockers:** none (depends on S4-01 IPaymentProvider abstraction)
 
 ### Contextual Continuity
-1. Read this file. Confirm Active Story = S4-02.
-2. Branch from `dev`: `git checkout -b feature/S4-02-recurrente-adapter`
-3. Work only within `apps/portal/lib/payments/` and related test files.
-4. On completion: PR to `dev` with AC + Security Constraint checklists ticked. Update this file (move S4-02 to Completed, promote S4-03 to Active).
+1. Read this file. Confirm Active Story = S4-03.
+2. Branch from previous S4 branch (S4-01/S4-02 not yet merged to dev): `git checkout -b feature/S4-03-neonet-adapter`
+3. Work only within `packages/shared/src/payments/adapters/`, `apps/portal/app/api/webhooks/`, and related test files.
+4. On completion: PR to `dev` with AC + Security Constraint checklists ticked. Update this file (move S4-03 to Completed, promote S4-04 to Active).
 
 ---
 
@@ -66,7 +66,7 @@
 
 ### Epic E4 — Payment Orchestration
 - [x] S4-01  `IPaymentProvider` abstraction + normalized event shape       [Sonnet 4.6]
-- [ ] S4-02  Recurrente adapter                                            [Sonnet 4.6]
+- [x] S4-02  Visanet adapter                                               [Sonnet 4.6]
 - [ ] S4-03  NeoNet adapter                                                [Sonnet 4.6]
 - [ ] S4-04  Visanet adapter                                               [Sonnet 4.6]
 - [ ] S4-05  Stripe adapter                                                [Sonnet 4.6]
@@ -113,6 +113,35 @@
 ---
 
 ## Completed
+
+### S4-02 — Visanet adapter
+**Status:** COMPLETED (2026-04-25)
+**Branch:** `feature/S4-02-visanet-adapter`
+**Summary:**
+- `packages/shared/src/payments/adapters/visanet.ts`: `VisanetAdapter` implementing `IPaymentProvider`; HMAC-SHA256 webhook verification via `timingSafeEqual`; event type mapping (TRANSACTION_APPROVED/DECLINED/REFUND_PROCESSED → normalized types); `VerifiedWebhookPayload` constructed via trusted cast after HMAC check
+- `packages/shared/src/payments/adapters/index.ts`: barrel export
+- `packages/shared/src/payments/index.ts`: updated to re-export adapters
+- `apps/portal/app/api/webhooks/visanet/route.ts`: raw body via `arrayBuffer()`, signature-first enforcement, idempotency guard on terminal statuses, always-200 after valid sig, TODO stub for BullMQ job (S5-01)
+- `apps/portal/lib/supabase/admin.ts`: canonical supabase admin singleton (required by webhook route; created per CLAUDE.md spec)
+- `apps/portal/lib/payments/registry.ts`: auto-registers `VisanetAdapter` at module load when `VISANET_API_KEY` + `VISANET_WEBHOOK_SECRET` are set
+- `.env.example`: added `RECURRENTE_WEBHOOK_SECRET`, `NEONET_WEBHOOK_SECRET`, `VISANET_WEBHOOK_SECRET`, `STRIPE_WEBHOOK_SECRET`
+- 15 unit tests: 3 createPaymentIntent, 5 verifyWebhookSignature, 6 normalizeWebhookEvent, 1 isolation
+
+**AC Checklist:**
+- [x] `adapters/visanet.ts` — implements IPaymentProvider (createPaymentIntent, verifyWebhookSignature, normalizeWebhookEvent)
+- [x] API keys from env: `VISANET_API_KEY`, `VISANET_WEBHOOK_SECRET`
+- [x] `.env.example` updated with gateway placeholders
+- [x] Unit tests: createPaymentIntent shape; valid/invalid signature (5 cases); all 3 event type normalizations
+- [x] `POST /api/webhooks/visanet`: raw body, sig-first, normalize→update→enqueue stub, always-200, idempotent
+- [x] Adapter registered in `registry.ts`
+
+**Security Constraints:**
+- [x] Raw body for signature — `Buffer.from(await req.arrayBuffer())`, not parsed JSON
+- [x] API keys never logged or in error messages
+- [x] `verifyWebhookSignature` called before any DB write
+- [x] `timingSafeEqual` prevents timing attacks on HMAC comparison
+
+---
 
 ### S4-01 — IPaymentProvider abstraction + normalized event shape
 **Status:** COMPLETED (2026-04-25)
